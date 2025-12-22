@@ -7,8 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { createSupabaseAdminClient } from "@/lib/supabase/admin"
-import { evaluateAlerts } from "@/lib/alerts/engine"
-import { upsertAlertsWithClient, resolveStaleAlertsWithClient } from "@/lib/alerts/store"
+import { runAlertsEvaluation } from "@/lib/alerts/run"
 
 export const dynamic = 'force-dynamic'
 
@@ -45,104 +44,30 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}))
     const workspaceIds = body.workspace_ids as string[] | undefined
 
-    // Se não especificado, buscar todos os workspaces (via admin client)
     const adminClient = createSupabaseAdminClient()
+    const result = await runAlertsEvaluation({
+      supabaseAdmin: adminClient,
+      workspaceIds,
+    })
 
-    let targetWorkspaceIds: string[] = []
-
-    if (workspaceIds && workspaceIds.length > 0) {
-      targetWorkspaceIds = workspaceIds
-    } else {
-      // Buscar todos os workspaces ativos
-      const { data: workspaces, error: workspacesError } = await adminClient
-        .from("workspaces")
-        .select("id")
-        .limit(1000) // Limite razoável
-
-      if (workspacesError) {
-        throw new Error(`Erro ao listar workspaces: ${workspacesError.message}`)
-      }
-
-      targetWorkspaceIds = (workspaces || []).map((w: any) => w.id)
+    if (!result.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: result.errors?.[0] || "Erro desconhecido",
+          errors: result.errors,
+        },
+        { status: 500 }
+      )
     }
 
-    if (targetWorkspaceIds.length === 0) {
-      return NextResponse.json({
-        success: true,
-        message: "Nenhum workspace para processar",
-        processed: 0,
-      })
-    }
-
-    // Processar cada workspace
-    let totalProcessed = 0
-    let totalAlerts = 0
-    const errors: string[] = []
-
-    for (const workspaceId of targetWorkspaceIds) {
-      try {
-        // Avaliar alertas para este workspace
-        const proposed = await evaluateAlerts({
-          workspaceId,
-          entityId: null,
-          accountId: null,
-        })
-
-        // Persistir usando admin client (bypass RLS)
-        await upsertAlertsWithClient(
-          adminClient,
-          workspaceId,
-          proposed,
-          null // created_by = null (automação)
-        )
-
-        // Resolver alertas stale
-        await resolveStaleAlertsWithClient(adminClient, workspaceId)
-
-        // Audit log usando admin client (actor_user_id NULL ok para automação)
-        if (proposed.length > 0) {
-          try {
-            const { error: auditError } = await adminClient
-              .from("audit_logs")
-              .insert({
-                workspace_id: workspaceId,
-                actor_user_id: null, // Automação
-                action: 'create',
-                entity_type: 'alert',
-                entity_id: workspaceId,
-                before: null,
-                after: {
-                  count: proposed.length,
-                  types: proposed.map((a) => a.type),
-                },
-              })
-
-            if (auditError) {
-              console.error('[alerts:evaluate] Erro ao gravar audit log:', auditError)
-            }
-          } catch (auditError) {
-            // Log mas não falha
-            console.error('[alerts:evaluate] Erro ao gravar audit log:', auditError)
-          }
-        }
-
-        totalProcessed++
-        totalAlerts += proposed.length
-      } catch (workspaceError) {
-        const errorMsg = workspaceError instanceof Error 
-          ? workspaceError.message 
-          : String(workspaceError)
-        errors.push(`Workspace ${workspaceId}: ${errorMsg}`)
-        console.error(`[alerts:evaluate] Erro ao processar workspace ${workspaceId}:`, workspaceError)
-      }
-    }
-
+    // Mantém formato de resposta compatível com implementação anterior
     return NextResponse.json({
       success: true,
-      processed: totalProcessed,
-      total_workspaces: targetWorkspaceIds.length,
-      total_alerts: totalAlerts,
-      errors: errors.length > 0 ? errors : undefined,
+      processed: result.evaluated,
+      total_workspaces: result.evaluated,
+      total_alerts: result.upserted,
+      errors: result.errors,
     })
   } catch (error) {
     console.error('[alerts:evaluate] Erro:', error)

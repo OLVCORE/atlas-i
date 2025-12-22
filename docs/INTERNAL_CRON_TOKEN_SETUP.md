@@ -37,6 +37,14 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 Você pode usar geradores online, mas **NÃO use em produção**. Para produção, sempre use OpenSSL ou Node.js.
 
+## Vercel Cron usa CRON_SECRET
+
+O Vercel Cron Jobs usa `CRON_SECRET` como padrão para autenticação. O endpoint `/api/cron/alerts` aceita `CRON_SECRET` primeiro, com fallback para `INTERNAL_CRON_TOKEN` (para chamadas manuais via curl).
+
+**Recomendação:** Configure `CRON_SECRET` no Vercel com o mesmo valor do token gerado. O `INTERNAL_CRON_TOKEN` ainda funciona para testes manuais, mas `CRON_SECRET` é o padrão para automação.
+
+---
+
 ## Como configurar?
 
 ### 1. Desenvolvimento Local (.env.local)
@@ -53,8 +61,11 @@ INTERNAL_CRON_TOKEN=seu-token-gerado-aqui
 NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 SUPABASE_SERVICE_ROLE_KEY=eyJ...
+CRON_SECRET=a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456
 INTERNAL_CRON_TOKEN=a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456
 ```
+
+**Nota:** Para desenvolvimento local, você pode usar o mesmo valor para ambos, ou apenas `CRON_SECRET` (o endpoint faz fallback para `INTERNAL_CRON_TOKEN`).
 
 3. **IMPORTANTE:** O arquivo `.env.local` já está no `.gitignore`, então não será commitado.
 
@@ -65,15 +76,20 @@ INTERNAL_CRON_TOKEN=a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef12
 1. Acesse: https://vercel.com/dashboard
 2. Selecione seu projeto
 3. Vá em **Settings** > **Environment Variables**
-4. Clique em **Add New**
-5. Preencha:
-   - **Key:** `INTERNAL_CRON_TOKEN`
+4. Adicione **CRON_SECRET** (padrão para Vercel Cron):
+   - **Key:** `CRON_SECRET`
    - **Value:** Seu token gerado (ex: `a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456`)
    - **Environments:** Selecione:
      - ✅ Production
      - ✅ Preview
      - ✅ Development (opcional)
-6. Clique em **Save**
+   - Clique em **Save**
+5. (Opcional) Adicione também **INTERNAL_CRON_TOKEN** para testes manuais:
+   - **Key:** `INTERNAL_CRON_TOKEN`
+   - **Value:** Mesmo valor do `CRON_SECRET` (ou diferente, se preferir)
+   - **Environments:** Mesmos ambientes
+   - Clique em **Save**
+6. **Importante:** Faça um novo deploy após adicionar as variáveis
 
 #### Via CLI Vercel:
 
