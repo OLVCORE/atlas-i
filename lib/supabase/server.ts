@@ -1,6 +1,16 @@
+/**
+ * MC9.0.2: Cliente Supabase Server (Session-based, RLS)
+ * 
+ * Este cliente usa a sessão do usuário e respeita RLS.
+ * Para operações administrativas, use createSupabaseAdminClient() de lib/supabase/admin.ts
+ */
+
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
+/**
+ * Cria cliente Supabase baseado na sessão do usuário (RLS aplicado)
+ */
 export async function createClient() {
   const cookieStore = await cookies()
 

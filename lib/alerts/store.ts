@@ -1,5 +1,6 @@
 /**
  * MC9: Persistência de Alertas (Upsert + Deduplicação)
+ * MC9.0.2: Refatorado para suportar cliente como parâmetro (UI + Automação)
  * 
  * Gerencia persistência de alertas com deduplicação por fingerprint
  */
@@ -7,6 +8,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { getActiveWorkspace } from "@/lib/workspace"
 import type { ProposedAlert } from "./engine"
+import type { SupabaseClient } from "@supabase/supabase-js"
 
 export type Alert = {
   id: string
@@ -30,21 +32,14 @@ export type Alert = {
 }
 
 /**
- * Upsert de alertas (insert ou update baseado em fingerprint)
- * 
- * Regras:
- * - Se não existe: insert (first_seen_at, last_seen_at = now)
- * - Se existe e state=open: update last_seen_at, message, context, severity, updated_at
- * - Se existe e state=dismissed/snoozed: não reabrir automaticamente, apenas atualizar last_seen_at
- *   (exceto se snoozed_until < now(), aí reabre)
+ * MC9.0.2: Versão com cliente como parâmetro (para uso em automação)
  */
-export async function upsertAlerts(
+export async function upsertAlertsWithClient(
+  supabase: SupabaseClient<any>,
+  workspaceId: string,
   proposed: ProposedAlert[],
-  actorId?: string
+  actorId?: string | null
 ): Promise<void> {
-  const supabase = await createClient()
-  const workspace = await getActiveWorkspace()
-
   if (proposed.length === 0) {
     return
   }
@@ -57,7 +52,7 @@ export async function upsertAlerts(
     const { data: existing, error: fetchError } = await supabase
       .from("alerts")
       .select("*")
-      .eq("workspace_id", workspace.id)
+      .eq("workspace_id", workspaceId)
       .eq("fingerprint", alert.fingerprint)
       .single()
 
@@ -90,7 +85,7 @@ export async function upsertAlerts(
             .eq("id", existingAlert.id)
 
           if (updateError) {
-            console.error(`[alerts:store] Erro ao reabrir alerta: ${updateError.message}`)
+            console.error(`[alerts:store] Erro ao reabrir alerta: ${updateError?.message || 'Erro desconhecido'}`)
           }
           continue
         }
@@ -107,7 +102,7 @@ export async function upsertAlerts(
           .eq("id", existingAlert.id)
 
         if (updateError) {
-          console.error(`[alerts:store] Erro ao atualizar last_seen_at: ${updateError.message}`)
+          console.error(`[alerts:store] Erro ao atualizar last_seen_at: ${updateError?.message || 'Erro desconhecido'}`)
         }
         continue
       }
@@ -126,7 +121,147 @@ export async function upsertAlerts(
           .eq("id", existingAlert.id)
 
         if (updateError) {
-          console.error(`[alerts:store] Erro ao atualizar alerta: ${updateError.message}`)
+          console.error(`[alerts:store] Erro ao atualizar alerta: ${updateError?.message || 'Erro desconhecido'}`)
+        }
+        continue
+      }
+
+      // Se está snoozed e não expirou, não fazer nada
+      if (existingAlert.state === 'snoozed') {
+        continue
+      }
+    } else {
+      // Não existe, criar novo
+      const { error: insertError } = await supabase
+        .from("alerts")
+        .insert({
+          workspace_id: workspaceId,
+          entity_id: alert.entity_id || null,
+          account_id: alert.account_id || null,
+          type: alert.type,
+          severity: alert.severity,
+          state: 'open',
+          title: alert.title,
+          message: alert.message,
+          fingerprint: alert.fingerprint,
+          context: alert.context,
+          first_seen_at: now,
+          last_seen_at: now,
+          created_by: actorId || null,
+        })
+
+      if (insertError) {
+        console.error(`[alerts:store] Erro ao criar alerta: ${insertError?.message || 'Erro desconhecido'}`)
+      }
+    }
+  }
+}
+
+/**
+ * Upsert de alertas (insert ou update baseado em fingerprint)
+ * Versão que usa session-based client (UI)
+ * 
+ * Regras:
+ * - Se não existe: insert (first_seen_at, last_seen_at = now)
+ * - Se existe e state=open: update last_seen_at, message, context, severity, updated_at
+ * - Se existe e state=dismissed/snoozed: não reabrir automaticamente, apenas atualizar last_seen_at
+ *   (exceto se snoozed_until < now(), aí reabre)
+ */
+export async function upsertAlerts(
+  proposed: ProposedAlert[],
+  actorId?: string
+): Promise<void> {
+  const supabase = await createClient()
+  const workspace = await getActiveWorkspace()
+  
+  return upsertAlertsWithClient(supabase, workspace.id, proposed, actorId)
+
+  if (proposed.length === 0) {
+    return
+  }
+
+  const now = new Date().toISOString()
+
+  // Para cada alerta proposto, fazer upsert
+  for (const alert of proposed) {
+    // Verificar se já existe pelo fingerprint
+    const { data: existing, error: fetchError } = await supabase
+      .from("alerts")
+      .select("*")
+      .eq("workspace_id", workspace.id)
+      .eq("fingerprint", alert.fingerprint)
+      .single()
+
+    if (fetchError) {
+      const errorCode = fetchError?.code
+      if (errorCode && errorCode !== 'PGRST116') {
+        // PGRST116 = not found (ok), outros erros são problemas
+        console.error(`[alerts:store] Erro ao buscar alerta existente: ${fetchError?.message || 'Erro desconhecido'}`)
+        continue
+      }
+      // Se é PGRST116 ou null, continuar normalmente (não encontrado = criar novo)
+    }
+
+    if (existing) {
+      // Alerta já existe
+      const existingAlert = existing as any
+
+      // Se está snoozed e já expirou, reabrir
+      if (existingAlert.state === 'snoozed' && existingAlert.snoozed_until) {
+        const snoozedUntil = new Date(existingAlert.snoozed_until)
+        if (snoozedUntil < new Date()) {
+          // Reabrir (mudar para open)
+          const { error: updateError } = await supabase
+            .from("alerts")
+            .update({
+              state: 'open',
+              last_seen_at: now,
+              message: alert.message,
+              context: alert.context,
+              severity: alert.severity,
+              updated_at: now,
+              snoozed_until: null,
+            })
+            .eq("id", existingAlert.id)
+
+          if (updateError) {
+            console.error(`[alerts:store] Erro ao reabrir alerta: ${updateError?.message || 'Erro desconhecido'}`)
+          }
+          continue
+        }
+      }
+
+      // Se está dismissed, não reabrir automaticamente (apenas atualizar last_seen_at para métricas)
+      if (existingAlert.state === 'dismissed' || existingAlert.state === 'resolved') {
+        // Atualizar apenas last_seen_at (para métricas)
+        const { error: updateError } = await supabase
+          .from("alerts")
+          .update({
+            last_seen_at: now,
+          })
+          .eq("id", existingAlert.id)
+
+        if (updateError) {
+          console.error(`[alerts:store] Erro ao atualizar last_seen_at: ${updateError?.message || 'Erro desconhecido'}`)
+        }
+        continue
+      }
+
+      // Se está open, atualizar dados mas manter state
+      if (existingAlert.state === 'open') {
+        const { error: updateError } = await supabase
+          .from("alerts")
+          .update({
+            last_seen_at: now,
+            message: alert.message,
+            context: alert.context,
+            severity: alert.severity,
+            updated_at: now,
+          })
+          .eq("id", existingAlert.id)
+
+        if (updateError) {
+          console.error(`[alerts:store] Erro ao atualizar alerta: ${updateError?.message || 'Erro desconhecido'}`)
         }
         continue
       }
@@ -156,21 +291,19 @@ export async function upsertAlerts(
         })
 
       if (insertError) {
-        console.error(`[alerts:store] Erro ao criar alerta: ${insertError.message}`)
+        console.error(`[alerts:store] Erro ao criar alerta: ${insertError?.message || 'Erro desconhecido'}`)
       }
     }
   }
 }
 
 /**
- * Resolve alertas "stale" (não vistos nesta rodada de avaliação)
- * 
- * Regra: alertas open que não foram vistos (last_seen_at < now() - interval) podem ser marcados resolved
- * Apenas para tipos que são "condições" (ex: cash_negative) se não reapareceram
+ * MC9.0.2: Versão com cliente como parâmetro (para uso em automação)
  */
-export async function resolveStaleAlerts(workspaceId: string): Promise<void> {
-  const supabase = await createClient()
-
+export async function resolveStaleAlertsWithClient(
+  supabase: SupabaseClient<any>,
+  workspaceId: string
+): Promise<void> {
   // Alertas open que não foram vistos nas últimas 2 horas
   const twoHoursAgo = new Date()
   twoHoursAgo.setHours(twoHoursAgo.getHours() - 2)
@@ -194,6 +327,18 @@ export async function resolveStaleAlerts(workspaceId: string): Promise<void> {
   if (error) {
     console.error(`[alerts:store] Erro ao resolver alertas stale: ${error.message}`)
   }
+}
+
+/**
+ * Resolve alertas "stale" (não vistos nesta rodada de avaliação)
+ * Versão que usa session-based client (UI)
+ * 
+ * Regra: alertas open que não foram vistos (last_seen_at < now() - interval) podem ser marcados resolved
+ * Apenas para tipos que são "condições" (ex: cash_negative) se não reaparecerem
+ */
+export async function resolveStaleAlerts(workspaceId: string): Promise<void> {
+  const supabase = await createClient()
+  return resolveStaleAlertsWithClient(supabase, workspaceId)
 }
 
 /**
