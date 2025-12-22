@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { gatherAssistantContext } from "@/lib/assistant/context"
 
+export const dynamic = 'force-dynamic'
+
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini"
 

@@ -4,6 +4,8 @@ import { cookies } from "next/headers"
 
 const WORKSPACE_COOKIE_NAME = "atlas-workspace-id"
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()

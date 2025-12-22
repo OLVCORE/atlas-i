@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server"
 import { fetchCnpjData } from "@/lib/providers/cnpj"
 import { validateCnpj, normalizeCnpj } from "@/lib/utils/cnpj"
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
