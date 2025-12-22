@@ -9,8 +9,6 @@ import { Label } from "@/components/ui/label"
 import { Mail, Eye, EyeOff } from "lucide-react"
 import { HelpTooltip } from "@/components/help/HelpTooltip"
 
-export const dynamic = 'force-dynamic'
-
 export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
