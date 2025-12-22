@@ -8,9 +8,6 @@ const inter = Inter({ subsets: ["latin"] })
 export const metadata: Metadata = {
   title: "ATLAS-i",
   description: "Sistema Financeiro Inteligente",
-  icons: {
-    icon: '/favicon.ico',
-  },
 }
 
 export default function RootLayout({
