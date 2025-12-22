@@ -2,6 +2,16 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
+  // Verificar se as variáveis de ambiente estão definidas
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    // Se não houver variáveis de ambiente, permitir passar (para evitar erro no build)
+    // A aplicação vai lidar com isso nas páginas
+    return NextResponse.next()
+  }
+
   let response = NextResponse.next({
     request: {
       headers: request.headers,
@@ -9,8 +19,8 @@ export async function middleware(request: NextRequest) {
   })
 
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseUrl,
+    supabaseAnonKey,
     {
       cookies: {
         get(name: string) {
@@ -54,16 +64,22 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
-  if (!user && request.nextUrl.pathname.startsWith('/app')) {
-    return NextResponse.redirect(new URL('/login', request.url))
-  }
+    if (!user && request.nextUrl.pathname.startsWith('/app')) {
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
 
-  if (user && request.nextUrl.pathname === '/login') {
-    return NextResponse.redirect(new URL('/app', request.url))
+    if (user && request.nextUrl.pathname === '/login') {
+      return NextResponse.redirect(new URL('/app', request.url))
+    }
+  } catch (error) {
+    // Se houver erro ao verificar usuário, permitir continuar
+    // A aplicação vai lidar com isso nas páginas
+    console.error('[middleware] Erro ao verificar usuário:', error)
   }
 
   return response
