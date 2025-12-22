@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
@@ -17,8 +17,23 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [useMagicLink, setUseMagicLink] = useState(true)
+  const [supabase, setSupabase] = useState<ReturnType<typeof createClient> | null>(null)
   const router = useRouter()
-  const supabase = createClient()
+
+  // Verificar variáveis de ambiente apenas no cliente
+  const [hasEnv, setHasEnv] = useState<boolean | null>(null)
+
+  // Criar cliente apenas no cliente, após mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+      const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      setHasEnv(!!url && !!key)
+      if (url && key) {
+        setSupabase(createClient())
+      }
+    }
+  }, [])
 
   const getErrorMessage = (error: any): string => {
     if (!error) return "Erro desconhecido"
@@ -62,6 +77,12 @@ export default function LoginPage() {
       return
     }
 
+    if (!supabase) {
+      setError("Cliente não inicializado. Recarregue a página.")
+      setLoading(false)
+      return
+    }
+
     try {
       const { error: magicLinkError } = await supabase.auth.signInWithOtp({
         email: email.trim(),
@@ -96,6 +117,12 @@ export default function LoginPage() {
 
     if (password.length < 6) {
       setError("A senha deve ter pelo menos 6 caracteres")
+      setLoading(false)
+      return
+    }
+
+    if (!supabase) {
+      setError("Cliente não inicializado. Recarregue a página.")
       setLoading(false)
       return
     }
@@ -139,6 +166,12 @@ export default function LoginPage() {
       return
     }
 
+    if (!supabase) {
+      setError("Cliente não inicializado. Recarregue a página.")
+      setLoading(false)
+      return
+    }
+
     try {
       const { data, error: signUpError } = await supabase.auth.signUp({
         email: email.trim(),
@@ -163,7 +196,7 @@ export default function LoginPage() {
     }
   }
 
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+  if (hasEnv === false) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="mx-auto max-w-md space-y-4 text-center">
@@ -171,6 +204,16 @@ export default function LoginPage() {
           <p className="text-muted-foreground">
             Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY no arquivo .env.local
           </p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!supabase || hasEnv === null) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="mx-auto max-w-md space-y-4 text-center">
+          <p className="text-muted-foreground">Carregando...</p>
         </div>
       </div>
     )
