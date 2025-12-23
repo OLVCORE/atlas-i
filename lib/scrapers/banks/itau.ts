@@ -115,7 +115,8 @@ export class ItauScraper extends BaseScraper {
       throw new Error('2FA requerido - implementação de TOTP pendente')
     } catch (error) {
       // Se não encontrar campo de 2FA, pode não ser necessário
-      if (!error.message.includes('2FA requerido')) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      if (!errorMessage.includes('2FA requerido')) {
         // Continua normalmente
       } else {
         throw error
