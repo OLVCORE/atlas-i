@@ -5,6 +5,7 @@
  */
 
 import crypto from 'crypto'
+import type { ScraperCredentials } from './types'
 
 const ALGORITHM = 'aes-256-gcm'
 const IV_LENGTH = 16
@@ -54,7 +55,7 @@ export function encryptCredentials(
 export function decryptCredentials(
   workspaceId: string,
   encrypted: string
-): Record<string, any> {
+): ScraperCredentials {
   const key = deriveKey(workspaceId)
   
   const parts = encrypted.split(':')
@@ -72,6 +73,7 @@ export function decryptCredentials(
   let decrypted = decipher.update(encryptedHex, 'hex', 'utf8')
   decrypted += decipher.final('utf8')
   
-  return JSON.parse(decrypted)
+  const parsed = JSON.parse(decrypted) as ScraperCredentials
+  return parsed
 }
 
