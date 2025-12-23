@@ -152,7 +152,22 @@ export function groupTransactionsByPurchase(
     }
 
     // Tentar encontrar grupo existente
-    let matchedGroup: typeof groups extends Map<any, infer V> ? V : never | null = null
+    let matchedGroup: {
+      purchaseId: string
+      transactions: Array<{
+        id: string
+        description: string
+        amount: number
+        date: string
+        installmentInfo?: {
+          current: number
+          total: number
+        }
+      }>
+      totalAmount: number
+      merchant?: string
+      installments: number
+    } | null = null
     
     for (const [key, group] of groups.entries()) {
       // Verificar se é a mesma compra:
