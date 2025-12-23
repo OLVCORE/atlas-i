@@ -204,6 +204,12 @@ export function ConnectionsWizardClient({
         const errorMessage = errorData.error || errorData.message || `Erro ${response.status}`
         const details = errorData.details ? `: ${errorData.details}` : ''
         
+        // Verificar se é limitação de trial
+        const isTrialLimit = errorData.isTrialLimit || 
+                            errorData.error === 'trial_limit' ||
+                            errorMessage.toLowerCase().includes('trial') && 
+                            (errorMessage.toLowerCase().includes('limit') || errorMessage.toLowerCase().includes('quota'))
+        
         // Não fazer refresh quando há erro para evitar loops
         const fullErrorMessage = `${errorMessage}${details}`
         console.error('[connections] Sync error:', {
@@ -211,10 +217,16 @@ export function ConnectionsWizardClient({
           status: response.status,
           error: fullErrorMessage,
           errorData,
+          isTrialLimit,
         })
         
         // Mostrar erro de forma mais amigável
-        alert(`Erro ao sincronizar:\n\n${fullErrorMessage}\n\nVerifique as credenciais Pluggy na Vercel ou recrie a conexão.`)
+        if (isTrialLimit) {
+          const solution = errorData.solution || 'Fazer upgrade para conta paga do Pluggy em https://www.pluggy.ai/pricing'
+          alert(`🔴 LIMITAÇÃO DE CONTA TRIAL\n\nA conta Pluggy está em modo trial e atingiu limitações.\n\nDetalhes: ${fullErrorMessage}\n\nSolução: ${solution}`)
+        } else {
+          alert(`Erro ao sincronizar:\n\n${fullErrorMessage}\n\nVerifique as credenciais Pluggy na Vercel ou recrie a conexão.`)
+        }
         
         // Não fazer refresh para evitar loop
         return
