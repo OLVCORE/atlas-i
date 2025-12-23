@@ -459,7 +459,7 @@ export async function importSpreadsheet(
       transactionsToInsert.push({
         workspace_id: workspace.id,
         entity_id: options.entityId,
-        account_id: accountId,
+        account_id: accountId || null,
         type: row.type,
         amount,
         currency: 'BRL',
