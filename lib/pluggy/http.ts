@@ -38,8 +38,8 @@ export async function pluggyFetch(
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => 'Erro desconhecido')
-    console.error(`[pluggy:http] Erro na requisição ${path}:`, response.status)
-    throw new Error(`Pluggy API error: ${response.status}`)
+    console.error(`[pluggy:http] Erro na requisição ${path}:`, response.status, errorText.substring(0, 200))
+    throw new Error(`Pluggy API error: ${response.status} ${errorText.substring(0, 100)}`)
   }
 
   return response

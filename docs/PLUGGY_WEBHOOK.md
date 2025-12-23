@@ -13,19 +13,21 @@ https://atlas-i.vercel.app/api/pluggy/webhook
 
 ## Headers Aceitos
 
-O endpoint aceita autenticação via um dos seguintes headers:
+O endpoint aceita autenticação via um dos seguintes headers (com prioridade):
 
-### Opção 1: Header `x-pluggy-signature`
-```
-x-pluggy-signature: <PLUGGY_WEBHOOK_SECRET>
-```
-
-### Opção 2: Header `Authorization: Bearer`
+### Prioridade 1: Header `Authorization: Bearer` (RECOMENDADO)
 ```
 Authorization: Bearer <PLUGGY_WEBHOOK_SECRET>
 ```
 
-**Nota:** O endpoint aceita qualquer um dos dois formatos para flexibilidade.
+**IMPORTANTE:** O valor de `PLUGGY_WEBHOOK_SECRET` no Vercel deve ser o **segredo PURO** (sem "Bearer ").
+
+### Prioridade 2: Header `x-pluggy-signature`
+```
+x-pluggy-signature: <PLUGGY_WEBHOOK_SECRET>
+```
+
+**Nota:** O endpoint verifica `Authorization: Bearer` primeiro, depois `x-pluggy-signature` como fallback.
 
 ## Configuração no Vercel
 
@@ -49,7 +51,8 @@ openssl rand -hex 32
 4. Clique em **Add New**
 5. Preencha:
    - **Key:** `PLUGGY_WEBHOOK_SECRET`
-   - **Value:** O token gerado (ex: `a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456`)
+   - **Value:** O token gerado (ex: `atlas_i_pluggy_webhook_2025_a1b2c3d4e5f67890...`)
+     - ⚠️ **IMPORTANTE:** Use apenas o valor PURO do segredo (sem "Bearer ")
    - **Environments:** Selecione:
      - ✅ Production
      - ✅ Preview (opcional)
@@ -61,10 +64,20 @@ openssl rand -hex 32
 
 Ao criar ou editar um webhook na Pluggy:
 
-1. **URL:** Cole a URL completa do webhook (ex: `https://atlas-i.vercel.app/api/pluggy/webhook`)
-2. **Headers:** Adicione um dos seguintes:
-   - `x-pluggy-signature: <valor-do-PLUGGY_WEBHOOK_SECRET>`
-   - OU `Authorization: Bearer <valor-do-PLUGGY_WEBHOOK_SECRET>`
+1. **URL:** Cole a URL completa do webhook:
+   ```
+   https://seu-dominio.vercel.app/api/pluggy/webhook
+   ```
+   Exemplo:
+   ```
+   https://atlas-i-git-main-olv-core444.vercel.app/api/pluggy/webhook
+   ```
+
+2. **Headers:** Adicione (recomendado usar `Authorization: Bearer`):
+   - `Authorization: Bearer <valor-do-PLUGGY_WEBHOOK_SECRET>`
+   - OU `x-pluggy-signature: <valor-do-PLUGGY_WEBHOOK_SECRET>`
+   
+   **Nota:** Use o valor PURO do `PLUGGY_WEBHOOK_SECRET` configurado no Vercel. O "Bearer " é adicionado automaticamente pelo header.
 
 ## Segurança
 
@@ -114,6 +127,15 @@ O endpoint registra logs seguros com:
 
 ## Teste Manual
 
+**Com Authorization: Bearer (recomendado):**
+```bash
+curl -X POST https://seu-dominio.com/api/pluggy/webhook \
+  -H "Authorization: Bearer seu-secret-aqui" \
+  -H "Content-Type: application/json" \
+  -d '{"type": "test", "event": "item.created"}'
+```
+
+**Com x-pluggy-signature (alternativo):**
 ```bash
 curl -X POST https://seu-dominio.com/api/pluggy/webhook \
   -H "x-pluggy-signature: seu-secret-aqui" \

@@ -214,8 +214,8 @@ export function ConnectionsWizardClient({
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between">
-              <span className={envCheck?.hasClientId && envCheck?.hasClientSecret ? "text-green-600" : "text-red-600"}>
-                {envCheck?.hasClientId && envCheck?.hasClientSecret ? "Sim" : "Não"}
+              <span className={envCheck?.hasPluggyCredentials ? "text-green-600" : "text-red-600"}>
+                {envCheck?.hasPluggyCredentials ? "Sim" : "Não"}
               </span>
               <Button size="sm" variant="outline" onClick={handleValidateEnv} disabled={validatingEnv}>
                 {validatingEnv ? (

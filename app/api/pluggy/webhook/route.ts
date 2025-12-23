@@ -12,26 +12,28 @@ const PLUGGY_WEBHOOK_SECRET = process.env.PLUGGY_WEBHOOK_SECRET
 
 /**
  * Valida segredo de webhook
- * Aceita x-pluggy-signature OU authorization: Bearer <secret>
+ * Prioridade: Authorization: Bearer <token> OU x-pluggy-signature: <token>
+ * 
+ * IMPORTANTE: PLUGGY_WEBHOOK_SECRET no Vercel deve ser o valor PURO (sem "Bearer ")
  */
 function validateWebhookSecret(request: NextRequest): { valid: boolean; error?: string } {
   if (!PLUGGY_WEBHOOK_SECRET) {
     return { valid: false, error: 'misconfig' }
   }
 
-  // Tentar header x-pluggy-signature
-  const signature = request.headers.get('x-pluggy-signature')
-  if (signature === PLUGGY_WEBHOOK_SECRET) {
-    return { valid: true }
-  }
-
-  // Tentar authorization: Bearer
+  // PRIORIDADE 1: Tentar Authorization: Bearer <token>
   const authHeader = request.headers.get('authorization')
   if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.substring(7)
+    const token = authHeader.substring(7).trim() // Remove "Bearer " e espaços
     if (token === PLUGGY_WEBHOOK_SECRET) {
       return { valid: true }
     }
+  }
+
+  // PRIORIDADE 2: Tentar header x-pluggy-signature
+  const signature = request.headers.get('x-pluggy-signature')
+  if (signature && signature.trim() === PLUGGY_WEBHOOK_SECRET) {
+    return { valid: true }
   }
 
   return { valid: false, error: 'unauthorized' }
@@ -58,18 +60,9 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // Ler body como JSON (ou texto se falhar)
-    let payload: any = {}
-    try {
-      const bodyText = await request.text()
-      if (bodyText) {
-        payload = JSON.parse(bodyText)
-      }
-    } catch {
-      // Se não for JSON válido, continua com payload vazio
-      payload = {}
-    }
-    
+    // Ler body como JSON
+    const payload = await request.json().catch(() => ({}))
+
     // Log seguro (sem imprimir body completo se for grande)
     const logData: Record<string, any> = {
       timestamp: new Date().toISOString(),

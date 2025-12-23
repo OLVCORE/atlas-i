@@ -1,8 +1,7 @@
 /**
- * MC10.0.1: Health check para credenciais Pluggy (público, server-only)
+ * MC10.0.1: Health check para credenciais Pluggy
  * 
- * Endpoint GET para verificar se credenciais estão configuradas e funcionais
- * Retorna apenas status, sem expor segredos
+ * Verifica se as credenciais estão configuradas e funcionais
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -10,10 +9,6 @@ import { getPluggyApiKey } from "@/lib/pluggy/auth"
 
 export const dynamic = 'force-dynamic'
 
-/**
- * GET /api/pluggy/auth
- * Health check público - verifica se credenciais Pluggy estão configuradas e funcionais
- */
 export async function GET(request: NextRequest) {
   try {
     // Tentar obter API Key (testa se credenciais estão corretas)
@@ -46,3 +41,4 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+

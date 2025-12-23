@@ -1,5 +1,6 @@
 /**
  * MC3.1b: Validação de variáveis de ambiente para conectores
+ * MC10.0.1: Adiciona verificação específica para Pluggy
  * Retorna apenas flags (true/false), nunca valores reais
  */
 
@@ -9,6 +10,7 @@ export type EnvStatus = {
   hasClientId: boolean
   hasClientSecret: boolean
   hasWebhook: boolean
+  hasPluggyCredentials: boolean // MC10.0.1: Pluggy específico
   provider?: string
   env?: string
 }
@@ -24,12 +26,18 @@ export function getEnvStatus(): EnvStatus {
   const clientSecret = process.env.CONNECTORS_CLIENT_SECRET
   const webhookSecret = process.env.CONNECTORS_WEBHOOK_SECRET
 
+  // MC10.0.1: Verificação específica para Pluggy
+  const pluggyClientId = process.env.PLUGGY_CLIENT_ID
+  const pluggyClientSecret = process.env.PLUGGY_CLIENT_SECRET
+  const hasPluggyCredentials = !!(pluggyClientId && pluggyClientSecret)
+
   return {
     hasProvider: !!provider,
     hasEnv: !!env,
     hasClientId: !!clientId,
     hasClientSecret: !!clientSecret,
     hasWebhook: !!webhookSecret,
+    hasPluggyCredentials, // MC10.0.1
     provider: provider || undefined,
     env: env || undefined,
   }
