@@ -7,7 +7,6 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { createScraperInstance } from "@/lib/scrapers/factory"
 import type { BankCode } from "@/lib/scrapers/types"
 
 export async function POST(request: NextRequest) {
@@ -50,7 +49,9 @@ export async function POST(request: NextRequest) {
 
     // Criar instância do scraper e testar conexão
     try {
-      const scraper = createScraperInstance(bankCode)
+      // TODO: Quando os scrapers estiverem completos, usar:
+      // const scraper = createScraper(bankCode, testCredentials)
+      // await scraper.testConnection()
       
       // Criar credenciais temporárias apenas para teste
       const testCredentials = {
