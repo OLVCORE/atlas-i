@@ -60,6 +60,30 @@ export async function POST(request: NextRequest) {
       stack,
     })
 
+    // Detectar erros específicos de configuração
+    if (errorMessage.includes('PLUGGY_CLIENT_ID') || errorMessage.includes('PLUGGY_CLIENT_SECRET')) {
+      return NextResponse.json(
+        {
+          error: "configuration_error",
+          message: "Credenciais Pluggy não configuradas",
+          details: "Configure PLUGGY_CLIENT_ID e PLUGGY_CLIENT_SECRET nas variáveis de ambiente da Vercel",
+        },
+        { status: 500 }
+      )
+    }
+
+    // Detectar erro 403 da API Pluggy (autenticação falhou)
+    if (errorMessage.includes('403') || errorMessage.includes('Forbidden')) {
+      return NextResponse.json(
+        {
+          error: "pluggy_auth_error",
+          message: "Erro de autenticação com a API Pluggy",
+          details: "Verifique se PLUGGY_CLIENT_ID e PLUGGY_CLIENT_SECRET estão corretos na Vercel",
+        },
+        { status: 500 }
+      )
+    }
+
     return NextResponse.json(
       {
         error: "internal_error",
