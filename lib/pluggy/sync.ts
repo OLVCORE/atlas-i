@@ -134,9 +134,39 @@ export async function syncPluggyConnection(connectionId: string): Promise<{
   let installmentsCreated = 0
 
   try {
-    // 1. Buscar accounts do Pluggy usando o endpoint correto
+    // 1. Verificar se o item existe e pertence à conta antes de buscar accounts
+    console.log(`[pluggy:sync] Verificando item ${itemId} antes de buscar accounts`)
+    
+    try {
+      const itemResponse = await pluggyFetch(`/items/${itemId}`, {
+        method: 'GET',
+      })
+      
+      if (itemResponse.ok) {
+        const itemData = await itemResponse.json()
+        console.log(`[pluggy:sync] Item encontrado:`, {
+          id: itemData.id,
+          status: itemData.status,
+          connector: itemData.connector?.name,
+          createdAt: itemData.createdAt,
+        })
+      }
+    } catch (itemError) {
+      console.error(`[pluggy:sync] Erro ao verificar item ${itemId}:`, itemError)
+      // Continuar mesmo se falhar, pode ser que o endpoint /items/{id} não exista
+    }
+    
+    // 2. Buscar accounts do Pluggy usando o endpoint correto
+    console.log(`[pluggy:sync] Tentando buscar accounts para itemId: ${itemId}`)
+    
     const accountsResponse = await pluggyFetch(`/items/${itemId}/accounts`, {
       method: 'GET',
+    })
+    
+    console.log(`[pluggy:sync] Resposta recebida para /items/${itemId}/accounts:`, {
+      status: accountsResponse.status,
+      statusText: accountsResponse.statusText,
+      ok: accountsResponse.ok,
     })
 
     const accountsData = (await accountsResponse.json()) as PluggyAccountsResponse

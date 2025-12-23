@@ -39,22 +39,44 @@ export async function pluggyFetch(
   if (!response.ok) {
     const errorText = await response.text().catch(() => 'Erro desconhecido')
     let errorMessage = `Pluggy API error: ${response.status}`
+    let errorDetails: any = {}
     
     try {
       const errorJson = JSON.parse(errorText)
       errorMessage = `Pluggy API error: ${response.status} ${JSON.stringify(errorJson)}`
+      errorDetails = errorJson
     } catch {
       errorMessage = `Pluggy API error: ${response.status} ${errorText.substring(0, 100)}`
+      errorDetails = { raw: errorText.substring(0, 500) }
     }
     
-    console.error(`[pluggy:http] Erro na requisição ${path}:`, response.status, errorText.substring(0, 200))
+    console.error(`[pluggy:http] Erro na requisição ${path}:`, {
+      status: response.status,
+      statusText: response.statusText,
+      path,
+      errorDetails,
+      headers: Object.fromEntries(response.headers.entries()),
+    })
     
-    // Se for 403, limpar cache de API key (pode estar expirado ou inválido)
+    // Se for 403, pode ser:
+    // 1. API key inválido/expirado
+    // 2. Item não pertence à conta
+    // 3. Permissões insuficientes
+    // 4. Item revogado/expirado
     if (response.status === 403) {
       // Limpar cache para forçar nova autenticação na próxima chamada
       const { clearPluggyApiKeyCache } = await import('./auth')
       clearPluggyApiKeyCache()
-      console.warn('[pluggy:http] Cache de API key limpo devido a erro 403')
+      console.warn('[pluggy:http] Cache de API key limpo devido a erro 403', {
+        path,
+        errorDetails,
+        possibleCauses: [
+          'API key inválido ou expirado',
+          'Item não pertence à conta Pluggy configurada',
+          'Item foi revogado ou expirado',
+          'Conta em trial com limitações',
+        ],
+      })
     }
     
     throw new Error(errorMessage)
