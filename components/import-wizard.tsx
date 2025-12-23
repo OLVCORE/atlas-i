@@ -11,7 +11,6 @@ import { Label } from "@/components/ui/label"
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
@@ -144,9 +143,9 @@ export function ImportWizard({
     <Card className="w-full max-w-2xl mx-auto">
       <CardHeader>
         <CardTitle>Importar Planilha (CSV)</CardTitle>
-        <CardDescription>
+        <p className="text-sm text-muted-foreground mt-2">
           Importe extratos bancários, cartões de crédito, investimentos e financiamentos
-        </CardDescription>
+        </p>
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Step 1: Selecionar arquivo */}

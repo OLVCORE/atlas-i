@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/server"
 import { listEntities } from "@/lib/entities"
 import { listAllAccounts } from "@/lib/accounts"
 import { ImportWizard } from "@/components/import-wizard"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 export default async function ImportPage() {
   const supabase = await createClient()
@@ -37,9 +37,9 @@ export default async function ImportPage() {
         <Card className="mt-6">
           <CardHeader>
             <CardTitle>Formato do CSV</CardTitle>
-            <CardDescription>
+            <p className="text-sm text-muted-foreground mt-2">
               O arquivo CSV deve conter as seguintes colunas (nomes podem variar):
-            </CardDescription>
+            </p>
           </CardHeader>
           <CardContent>
             <div className="space-y-2 text-sm">
