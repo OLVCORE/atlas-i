@@ -504,19 +504,6 @@ export function ScrapersManager({
                 </div>
 
                 <div>
-                  <Label>Usuário/CPF/CNPJ *</Label>
-                  <p className="text-xs text-muted-foreground mb-2">
-                    CPF (se PF) ou CNPJ (se PJ), ou nome de usuário do banco
-                  </p>
-                  <Input
-                    value={formData.username}
-                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                    placeholder="CPF, CNPJ ou usuário"
-                    disabled={!formData.bankCode}
-                  />
-                </div>
-
-                <div>
                   <Label>Senha *</Label>
                   <p className="text-xs text-muted-foreground mb-2">
                     Senha de acesso ao internet banking. <strong className="text-red-600">Nunca compartilhe sua senha.</strong>
@@ -663,7 +650,11 @@ export function ScrapersManager({
                       setFormData({
                         bankCode: '' as BankCode | '',
                         entityId: '',
-                        username: '',
+                        cpf: '',
+                        cnpj: '',
+                        agency: '',
+                        accountNumber: '',
+                        accountDigit: '',
                         password: '', // Limpar
                         twoFactorSecret: '',
                         accountId: '',
