@@ -334,11 +334,14 @@ export async function importSpreadsheet(
     }> = []
     
     for (const row of parseResult.rows) {
+      // Preparar transação
+      const amount = row.type === 'expense' ? -Math.abs(row.amount) : Math.abs(row.amount)
+      
+      // Gerar external_id (inclui accountId para diferenciar contas)
       const externalId = generateExternalId(row, options.entityId, accountId)
       
       // Verificar duplicata se solicitado
       if (options.skipDuplicates) {
-        const amount = row.type === 'expense' ? -Math.abs(row.amount) : Math.abs(row.amount)
         const duplicateCheck = await transactionExists(
           options.entityId,
           externalId,
@@ -360,9 +363,6 @@ export async function importSpreadsheet(
           continue
         }
       }
-      
-      // Preparar transação
-      const amount = row.type === 'expense' ? -Math.abs(row.amount) : Math.abs(row.amount)
       
       transactionsToInsert.push({
         workspace_id: workspace.id,
