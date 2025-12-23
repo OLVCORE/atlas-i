@@ -1,55 +1,92 @@
 /**
- * MC10.0.1: Webhook endpoint para receber eventos da Pluggy
+ * MC10.0.2: Webhook endpoint para receber eventos da Pluggy
  * 
- * Valida token de webhook e processa eventos
+ * Valida segredo de webhook e processa eventos
  */
 
 import { NextRequest, NextResponse } from "next/server"
 
 export const dynamic = 'force-dynamic'
 
-const PLUGGY_WEBHOOK_TOKEN = process.env.PLUGGY_WEBHOOK_TOKEN
+const PLUGGY_WEBHOOK_SECRET = process.env.PLUGGY_WEBHOOK_SECRET
 
 /**
- * Valida token de webhook
+ * Valida segredo de webhook
+ * Aceita x-pluggy-signature OU authorization: Bearer <secret>
  */
-function validateWebhookToken(request: NextRequest): boolean {
-  if (!PLUGGY_WEBHOOK_TOKEN) {
-    return false
+function validateWebhookSecret(request: NextRequest): { valid: boolean; error?: string } {
+  if (!PLUGGY_WEBHOOK_SECRET) {
+    return { valid: false, error: 'misconfig' }
   }
 
-  const webhookToken = request.headers.get('x-olv-webhook-token')
-  return webhookToken === PLUGGY_WEBHOOK_TOKEN
+  // Tentar header x-pluggy-signature
+  const signature = request.headers.get('x-pluggy-signature')
+  if (signature === PLUGGY_WEBHOOK_SECRET) {
+    return { valid: true }
+  }
+
+  // Tentar authorization: Bearer
+  const authHeader = request.headers.get('authorization')
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7)
+    if (token === PLUGGY_WEBHOOK_SECRET) {
+      return { valid: true }
+    }
+  }
+
+  return { valid: false, error: 'unauthorized' }
 }
 
 export async function POST(request: NextRequest) {
-  // Validar token de webhook
-  if (!validateWebhookToken(request)) {
+  // Validar segredo (fail-closed)
+  const validation = validateWebhookSecret(request)
+  
+  if (!validation.valid) {
+    const statusCode = validation.error === 'misconfig' ? 500 : 401
+    const message = validation.error === 'misconfig'
+      ? "Configuração ausente. Verifique PLUGGY_WEBHOOK_SECRET."
+      : "Segredo de webhook inválido"
+    
     return NextResponse.json(
       {
         ok: false,
-        error: "unauthorized",
-        message: "Token de webhook inválido",
+        error: validation.error || 'unauthorized',
+        message,
       },
-      { status: 401 }
+      { status: statusCode }
     )
   }
 
   try {
-    const payload = await request.json().catch(() => ({}))
+    // Ler body como JSON (ou texto se falhar)
+    let payload: any = {}
+    try {
+      const bodyText = await request.text()
+      if (bodyText) {
+        payload = JSON.parse(bodyText)
+      }
+    } catch {
+      // Se não for JSON válido, continua com payload vazio
+      payload = {}
+    }
     
-    // Log seguro (sem segredos)
-    console.log('[pluggy:webhook] Evento recebido:', {
-      type: payload.type || 'unknown',
+    // Log seguro (sem imprimir body completo se for grande)
+    const logData: Record<string, any> = {
       timestamp: new Date().toISOString(),
-    })
+    }
+    
+    if (payload.type) logData.type = payload.type
+    if (payload.itemId) logData.itemId = payload.itemId
+    if (payload.clientUserId) logData.clientUserId = payload.clientUserId
+    if (payload.event) logData.event = payload.event
+
+    console.log('[pluggy:webhook] Evento recebido:', logData)
 
     // Por enquanto, apenas log e retornar 200
     // Persistência será implementada em MC posterior
 
     return NextResponse.json({
       ok: true,
-      received: true,
     })
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Erro desconhecido"
