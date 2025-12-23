@@ -243,6 +243,98 @@ async function findOrCreateAccount(
 }
 
 /**
+ * Faz baixa automática de parcelas de cartão quando detecta pagamentos nas transações importadas
+ */
+async function settleCardInstallmentsFromTransactions(
+  entityId: string,
+  accountId: string,
+  transactions: Array<{ id: string; date: string; amount: number; description: string }>
+): Promise<number> {
+  const supabase = await createClient()
+  const workspace = await getActiveWorkspace()
+  
+  let settledCount = 0
+  
+  // Verificar se a conta está vinculada a um cartão
+  const { data: accountData } = await supabase
+    .from("accounts")
+    .select("id, name")
+    .eq("id", accountId)
+    .eq("workspace_id", workspace.id)
+    .single()
+  
+  if (!accountData) return 0
+  
+  // Buscar cartões da entidade
+  const { data: cards } = await supabase
+    .from("cards")
+    .select("id, name, due_day")
+    .eq("workspace_id", workspace.id)
+    .eq("entity_id", entityId)
+  
+  if (!cards || cards.length === 0) return 0
+  
+  // Para cada transação importada, tentar fazer baixa de parcelas
+  for (const transaction of transactions) {
+    const txAmount = Math.abs(Number(transaction.amount))
+    const txDate = new Date(transaction.date)
+    
+    // Buscar parcelas pendentes (scheduled) que podem ser pagas por esta transação
+    // Critérios:
+    // 1. Parcela está scheduled (não paga)
+    // 2. Valor da parcela corresponde ao valor da transação (tolerância de 1 centavo)
+    // 3. Data da transação é próxima ou após a data de vencimento da parcela
+    // 4. Parcela pertence a um dos cartões da entidade
+    
+    for (const card of cards) {
+      const { data: installments } = await supabase
+        .from("card_installments")
+        .select("id, amount, competence_month, due_date, status, posted_transaction_id")
+        .eq("workspace_id", workspace.id)
+        .eq("entity_id", entityId)
+        .eq("card_id", card.id)
+        .eq("status", "scheduled")
+        .is("posted_transaction_id", null)
+        .order("due_date", { ascending: true })
+      
+      if (!installments || installments.length === 0) continue
+      
+      // Tentar fazer match com parcelas
+      for (const installment of installments) {
+        const installmentAmount = Math.abs(Number(installment.amount))
+        const amountMatch = Math.abs(installmentAmount - txAmount) <= 0.01 // 1 centavo de tolerância
+        
+        if (!amountMatch) continue
+        
+        // Verificar se a data da transação é próxima ou após o vencimento
+        // Permitir pagamento até 30 dias após o vencimento
+        const dueDate = installment.due_date ? new Date(installment.due_date) : null
+        if (dueDate) {
+          const daysDiff = (txDate.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)
+          if (daysDiff < -5 || daysDiff > 30) continue // Muito antes ou muito depois
+        }
+        
+        // Fazer baixa da parcela
+        const { error: updateError } = await supabase
+          .from("card_installments")
+          .update({
+            status: "posted",
+            posted_transaction_id: transaction.id,
+          })
+          .eq("id", installment.id)
+        
+        if (!updateError) {
+          settledCount++
+          break // Uma transação só pode pagar uma parcela
+        }
+      }
+    }
+  }
+  
+  return settledCount
+}
+
+/**
  * Importa planilha CSV
  */
 export async function importSpreadsheet(
@@ -338,7 +430,7 @@ export async function importSpreadsheet(
       const amount = row.type === 'expense' ? -Math.abs(row.amount) : Math.abs(row.amount)
       
       // Gerar external_id (inclui accountId para diferenciar contas)
-      const externalId = generateExternalId(row, options.entityId, accountId)
+      const externalId = generateExternalId(row, options.entityId, accountId || null)
       
       // Verificar duplicata se solicitado
       if (options.skipDuplicates) {
@@ -379,11 +471,13 @@ export async function importSpreadsheet(
     }
     
     // Inserir transações em lote
+    let insertedTransactions: Array<{ id: string; date: string; amount: number; description: string }> = []
+    
     if (transactionsToInsert.length > 0) {
       const { data: inserted, error: insertError } = await supabase
         .from("transactions")
         .insert(transactionsToInsert)
-        .select("id")
+        .select("id, date, amount, description")
       
       if (insertError) {
         result.errors.push({
@@ -392,16 +486,38 @@ export async function importSpreadsheet(
         })
         result.skipped.errors += transactionsToInsert.length
       } else {
-        result.imported.transactions = inserted?.length || 0
+        insertedTransactions = inserted || []
+        result.imported.transactions = insertedTransactions.length
+      }
+    }
+    
+    // ATUALIZAÇÃO AUTOMÁTICA: Fazer baixa de parcelas de cartão quando detectar pagamentos
+    if (insertedTransactions.length > 0 && accountId) {
+      try {
+        const installmentsSettled = await settleCardInstallmentsFromTransactions(
+          options.entityId,
+          accountId,
+          insertedTransactions
+        )
+        
+        if (installmentsSettled > 0) {
+          result.warnings.push({
+            message: `${installmentsSettled} parcela(s) de cartão foram baixadas automaticamente`,
+          })
+        }
+      } catch (settleError) {
+        console.error('[import] Erro ao fazer baixa de parcelas:', settleError)
+        result.warnings.push({
+          message: 'Erro ao fazer baixa automática de parcelas. Verifique manualmente.',
+        })
       }
     }
     
     // Se autoReconcile, tentar conciliar automaticamente
     if (options.autoReconcile && result.imported.transactions > 0) {
-      // TODO: Implementar conciliação automática
-      // Por enquanto, apenas avisar que precisa ser feita manualmente
+      // TODO: Implementar conciliação automática com schedules/commitments
       result.warnings.push({
-        message: 'Conciliação automática ainda não implementada. Use a página de reconciliação para conciliar manualmente.',
+        message: 'Conciliação automática com schedules ainda não implementada. Use a página de reconciliação para conciliar manualmente.',
       })
     }
     
