@@ -46,7 +46,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    console.log('[api:pluggy:sync] Iniciando sync para connectionId:', connectionId)
+    
     const result = await syncPluggyConnection(connectionId)
+
+    console.log('[api:pluggy:sync] Sync concluído com sucesso:', result)
 
     return NextResponse.json({
       ok: true,
@@ -55,9 +59,13 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Erro desconhecido"
     const stack = error instanceof Error ? error.stack : undefined
+    const errorName = error instanceof Error ? error.name : 'Unknown'
+    
     console.error('[api:pluggy:sync] Unexpected error:', {
+      name: errorName,
       message: errorMessage,
-      stack,
+      stack: stack?.substring(0, 500), // Limitar tamanho do stack
+      error: error instanceof Error ? error.toString() : String(error),
     })
 
     // Detectar erros específicos de configuração
@@ -73,12 +81,24 @@ export async function POST(request: NextRequest) {
     }
 
     // Detectar erro 403 da API Pluggy (autenticação falhou)
-    if (errorMessage.includes('403') || errorMessage.includes('Forbidden')) {
+    if (errorMessage.includes('403') || errorMessage.includes('Forbidden') || errorMessage.includes('pluggy_auth_error')) {
       return NextResponse.json(
         {
           error: "pluggy_auth_error",
           message: "Erro de autenticação com a API Pluggy",
-          details: "Verifique se PLUGGY_CLIENT_ID e PLUGGY_CLIENT_SECRET estão corretos na Vercel",
+          details: "Verifique se PLUGGY_CLIENT_ID e PLUGGY_CLIENT_SECRET estão corretos na Vercel. O cache foi limpo e uma nova autenticação será tentada na próxima requisição.",
+        },
+        { status: 500 }
+      )
+    }
+    
+    // Detectar erro de autenticação do Pluggy (auth failed)
+    if (errorMessage.includes('Pluggy auth failed') || errorMessage.includes('auth failed')) {
+      return NextResponse.json(
+        {
+          error: "pluggy_auth_error",
+          message: "Falha ao obter API Key do Pluggy",
+          details: "As credenciais PLUGGY_CLIENT_ID e PLUGGY_CLIENT_SECRET podem estar incorretas ou a conta Pluggy pode estar inativa.",
         },
         { status: 500 }
       )

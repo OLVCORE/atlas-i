@@ -38,8 +38,26 @@ export async function pluggyFetch(
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => 'Erro desconhecido')
+    let errorMessage = `Pluggy API error: ${response.status}`
+    
+    try {
+      const errorJson = JSON.parse(errorText)
+      errorMessage = `Pluggy API error: ${response.status} ${JSON.stringify(errorJson)}`
+    } catch {
+      errorMessage = `Pluggy API error: ${response.status} ${errorText.substring(0, 100)}`
+    }
+    
     console.error(`[pluggy:http] Erro na requisição ${path}:`, response.status, errorText.substring(0, 200))
-    throw new Error(`Pluggy API error: ${response.status} ${errorText.substring(0, 100)}`)
+    
+    // Se for 403, limpar cache de API key (pode estar expirado ou inválido)
+    if (response.status === 403) {
+      // Limpar cache para forçar nova autenticação na próxima chamada
+      const { clearPluggyApiKeyCache } = await import('./auth')
+      clearPluggyApiKeyCache()
+      console.warn('[pluggy:http] Cache de API key limpo devido a erro 403')
+    }
+    
+    throw new Error(errorMessage)
   }
 
   return response

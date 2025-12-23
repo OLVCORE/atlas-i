@@ -57,8 +57,23 @@ export async function getPluggyApiKey(): Promise<string> {
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Erro desconhecido')
-      console.error('[pluggy:auth] Erro ao obter API Key:', response.status)
-      throw new Error(`Pluggy auth failed: ${response.status}`)
+      let errorDetails = `Pluggy auth failed: ${response.status}`
+      
+      try {
+        const errorJson = JSON.parse(errorText)
+        errorDetails = `Pluggy auth failed: ${response.status} ${JSON.stringify(errorJson)}`
+      } catch {
+        errorDetails = `Pluggy auth failed: ${response.status} ${errorText.substring(0, 100)}`
+      }
+      
+      console.error('[pluggy:auth] Erro ao obter API Key:', response.status, errorText.substring(0, 200))
+      
+      // Se for 401 ou 403, as credenciais podem estar incorretas
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(`pluggy_auth_error: ${errorDetails}. Verifique se PLUGGY_CLIENT_ID e PLUGGY_CLIENT_SECRET estão corretos na Vercel`)
+      }
+      
+      throw new Error(errorDetails)
     }
 
     const data = (await response.json()) as PluggyAuthResponse
@@ -80,5 +95,12 @@ export async function getPluggyApiKey(): Promise<string> {
     }
     throw new Error(`Erro ao obter API Key do Pluggy: ${error instanceof Error ? error.message : 'Erro desconhecido'}`)
   }
+}
+
+/**
+ * Limpa o cache de API Key (útil quando há erro 403 para forçar nova autenticação)
+ */
+export function clearPluggyApiKeyCache(): void {
+  apiKeyCache = null
 }
 

@@ -126,65 +126,138 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Se entityId não for fornecido, usar a primeira entidade do workspace
-    let targetEntityId = entityId
-    if (!targetEntityId) {
-      const { data: entities, error: entitiesError } = await supabase
-        .from("entities")
-        .select("id")
-        .eq("workspace_id", workspace.id)
-        .order("created_at", { ascending: true })
-        .limit(1)
-
-      if (entitiesError || !entities || entities.length === 0) {
-        console.error('[api:connections:POST] No entities found', {
-          workspaceId: workspace.id,
-          error: entitiesError?.message,
-          userId: user.id,
-        })
-        return NextResponse.json(
-          {
-            error: "Nenhuma entidade encontrada",
-            message: "Nenhuma entidade encontrada para vincular a conexão",
-            details: entitiesError?.message || "Crie uma entidade antes de criar conexões",
-          },
-          { status: 400 }
-        )
-      }
-      targetEntityId = entities[0].id
-    }
-
-    // Inserir nova conexão
-    const { data: connection, error: insertError } = await supabase
-      .from("connections")
-      .insert({
-        workspace_id: workspace.id,
-        entity_id: targetEntityId,
-        provider_id: providerConfig.id,
-        external_connection_id: externalConnectionId,
-        status: 'active', // Status inicial como ativo
-        metadata: { providerKey },
-      })
-      .select()
-      .single()
-
-    if (insertError || !connection) {
-      console.error('[api:connections:POST] Insert error', {
-        error: insertError?.message,
-        code: insertError?.code,
-        userId: user.id,
+    // entityId é obrigatório - nunca "chutar"
+    if (!entityId) {
+      console.error('[api:connections:POST] entityId is required', {
         workspaceId: workspace.id,
-        providerId: providerConfig.id,
-        entityId: targetEntityId,
+        userId: user.id,
       })
       return NextResponse.json(
         {
-          error: "Erro ao criar conexão",
-          message: "Falha ao inserir conexão no banco de dados",
-          details: insertError?.message || "Erro desconhecido",
+          error: "entityId é obrigatório",
+          message: "entityId deve ser fornecido ao criar conexão",
+          details: "Nunca use entidade padrão. O entityId deve vir da UI.",
         },
-        { status: 500 }
+        { status: 400 }
       )
+    }
+
+    // Validar que a entidade pertence ao workspace
+    const { data: entity, error: entityError } = await supabase
+      .from("entities")
+      .select("id")
+      .eq("id", entityId)
+      .eq("workspace_id", workspace.id)
+      .single()
+
+    if (entityError || !entity) {
+      console.error('[api:connections:POST] Entity not found or wrong workspace', {
+        entityId,
+        workspaceId: workspace.id,
+        error: entityError?.message,
+        userId: user.id,
+      })
+      return NextResponse.json(
+        {
+          error: "Entidade não encontrada",
+          message: `Entidade '${entityId}' não encontrada neste workspace`,
+          details: entityError?.message || "A entidade deve pertencer ao workspace ativo",
+        },
+        { status: 404 }
+      )
+    }
+
+    const targetEntityId = entityId
+
+    // Verificar se já existe conexão (idempotência)
+    const { data: existingConnection } = await supabase
+      .from("connections")
+      .select("id, status, last_sync_at")
+      .eq("workspace_id", workspace.id)
+      .eq("entity_id", targetEntityId)
+      .eq("provider_id", providerConfig.id)
+      .eq("external_connection_id", externalConnectionId)
+      .maybeSingle()
+
+    let connection
+
+    if (existingConnection) {
+      // Conexão já existe, retornar existente (idempotência)
+      console.log('[api:connections:POST] Connection already exists', {
+        connectionId: existingConnection.id,
+        userId: user.id,
+        workspaceId: workspace.id,
+        entityId: targetEntityId,
+        externalConnectionId,
+      })
+      connection = existingConnection
+    } else {
+      // Inserir nova conexão
+      const { data: newConnection, error: insertError } = await supabase
+        .from("connections")
+        .insert({
+          workspace_id: workspace.id,
+          entity_id: targetEntityId,
+          provider_id: providerConfig.id,
+          external_connection_id: externalConnectionId,
+          status: 'active',
+          last_error: null,
+          metadata: { providerKey },
+        })
+        .select()
+        .single()
+
+      if (insertError || !newConnection) {
+        // Se erro for de constraint unique violation, buscar existente
+        if (insertError?.code === '23505') {
+          const { data: conflictConnection } = await supabase
+            .from("connections")
+            .select("id, status, last_sync_at")
+            .eq("workspace_id", workspace.id)
+            .eq("entity_id", targetEntityId)
+            .eq("provider_id", providerConfig.id)
+            .eq("external_connection_id", externalConnectionId)
+            .maybeSingle()
+
+          if (conflictConnection) {
+            connection = conflictConnection
+          } else {
+            console.error('[api:connections:POST] Insert error (conflict)', {
+              error: insertError?.message,
+              code: insertError?.code,
+              userId: user.id,
+              workspaceId: workspace.id,
+            })
+            return NextResponse.json(
+              {
+                error: "Erro ao criar conexão",
+                message: "Conexão duplicada detectada mas não encontrada",
+                details: insertError?.message || "Erro desconhecido",
+              },
+              { status: 500 }
+            )
+          }
+        } else {
+          console.error('[api:connections:POST] Insert error', {
+            error: insertError?.message,
+            code: insertError?.code,
+            userId: user.id,
+            workspaceId: workspace.id,
+            providerId: providerConfig.id,
+            entityId: targetEntityId,
+          })
+          return NextResponse.json(
+            {
+              error: "Erro ao criar conexão",
+              message: "Falha ao inserir conexão no banco de dados",
+              details: insertError?.message || "Erro desconhecido",
+            },
+            { status: 500 }
+          )
+        }
+      } else {
+        connection = newConnection
+      }
     }
 
     // Auditoria

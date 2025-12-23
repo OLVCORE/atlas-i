@@ -34,8 +34,8 @@ async function updateProviderStatusAction(providerId: string, status: 'active' |
 
 async function syncConnectionAction(connectionId: string) {
   "use server"
-  const { createSyncRun } = await import("@/lib/connectors/sync")
-  await createSyncRun(connectionId)
+  const { syncPluggyConnection } = await import("@/lib/pluggy/sync")
+  await syncPluggyConnection(connectionId)
   redirect("/app/connections")
 }
 

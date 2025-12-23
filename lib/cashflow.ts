@@ -9,6 +9,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { getActiveWorkspace } from "@/lib/workspace"
 import { formatDateISO, parseDateISO } from "@/lib/utils/dates"
+import { getDueDateForCompetenceMonth } from "@/lib/cards/installments"
 
 export type CashflowEntry = {
   period: string // 'YYYY-MM' para monthly, 'YYYY-MM-DD' para daily
@@ -88,6 +89,28 @@ export async function getCashflow(options: {
 
   if (csError) {
     throw new Error(`Erro ao buscar contract_schedules: ${csError.message}`)
+  }
+
+  // Buscar card_installments (parcelas de cartão)
+  // Calcular due_date baseado no due_day do cartão e competence_month
+  const { data: cardInstallments, error: ciError } = await supabase
+    .from("card_installments")
+    .select(`
+      id,
+      competence_month,
+      amount,
+      status,
+      posted_transaction_id,
+      cards!inner (
+        due_day
+      )
+    `)
+    .eq("workspace_id", workspace.id)
+    .eq("status", "scheduled")
+    .is("posted_transaction_id", null)
+
+  if (ciError) {
+    throw new Error(`Erro ao buscar card_installments: ${ciError.message}`)
   }
 
   // Agregar por período
@@ -179,6 +202,51 @@ export async function getCashflow(options: {
       if (isRealized) {
         entry.realizado_saidas += amount
       }
+    }
+  }
+
+  // Processar card_installments (parcelas de cartão)
+  for (const ci of cardInstallments || []) {
+    const card = (ci as any).cards
+    if (!card || !card.due_day) continue
+
+    // Calcular data de pagamento baseada no due_day e competence_month
+    const competenceMonth = new Date(ci.competence_month)
+    const dueDate = getDueDateForCompetenceMonth(ci.competence_month, card.due_day)
+    const dueDateStr = formatDateISO(dueDate)
+
+    // Verificar se está no período
+    if (dueDateStr < from || dueDateStr > to) {
+      continue
+    }
+
+    const period = options.granularity === 'month' 
+      ? dueDateStr.substring(0, 7) // YYYY-MM
+      : dueDateStr // YYYY-MM-DD
+
+    if (!entriesMap.has(period)) {
+      entriesMap.set(period, {
+        period,
+        previsto_entradas: 0,
+        previsto_saidas: 0,
+        saldo_previsto: 0,
+        realizado_entradas: 0,
+        realizado_saidas: 0,
+        saldo_realizado: 0,
+      })
+    }
+
+    const entry = entriesMap.get(period)!
+    const amount = Number(ci.amount)
+    const isPlanned = ci.status === 'scheduled' && !ci.posted_transaction_id
+    const isRealized = ci.status === 'posted' || !!ci.posted_transaction_id
+
+    // Cartões são sempre despesas (saídas)
+    if (isPlanned) {
+      entry.previsto_saidas += amount
+    }
+    if (isRealized) {
+      entry.realizado_saidas += amount
     }
   }
 

@@ -20,15 +20,22 @@ export type Connection = {
 }
 
 /**
- * Lista conexões do workspace
+ * Lista conexões do workspace (com JOIN com entities)
  */
-export async function listConnections(): Promise<Connection[]> {
+export async function listConnections(): Promise<(Connection & { entity_legal_name?: string; entity_type?: string })[]> {
   const supabase = await createClient()
   const workspace = await getActiveWorkspace()
 
   const { data: connections, error } = await supabase
     .from("connections")
-    .select("*")
+    .select(`
+      *,
+      entities:entity_id (
+        legal_name,
+        type,
+        document
+      )
+    `)
     .eq("workspace_id", workspace.id)
     .order("created_at", { ascending: false })
 
@@ -36,7 +43,12 @@ export async function listConnections(): Promise<Connection[]> {
     throw new Error(`Erro ao listar conexões: ${error.message}`)
   }
 
-  return connections || []
+  return (connections || []).map((conn: any) => ({
+    ...conn,
+    entity_legal_name: conn.entities?.legal_name,
+    entity_type: conn.entities?.type,
+    entity_document: conn.entities?.document,
+  }))
 }
 
 /**

@@ -9,6 +9,7 @@ import { getActiveWorkspace } from "@/lib/workspace"
 import { getConnectionById } from "@/lib/connectors/connections"
 import { pluggyFetch } from "./http"
 import { createSyncRun, finishSyncRunSuccess, finishSyncRunError } from "@/lib/connectors/sync"
+import { isCreditCardAccount, getOrCreateCardFromPluggyAccount, processCardTransactions } from "./cards"
 
 type PluggyAccount = {
   id: string
@@ -52,17 +53,26 @@ export async function syncPluggyConnection(connectionId: string): Promise<{
   accountsUpserted: number
   transactionsUpserted: number
   accountsProcessed: number
+  cardsCreated: number
+  purchasesCreated: number
+  installmentsCreated: number
 }> {
+  console.log('[pluggy:sync] Iniciando syncPluggyConnection para connectionId:', connectionId)
+  
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
   if (!user) {
+    console.error('[pluggy:sync] Usuário não autenticado')
     throw new Error("Usuário não autenticado")
   }
 
+  console.log('[pluggy:sync] Usuário autenticado:', user.id)
+
   const workspace = await getActiveWorkspace()
+  console.log('[pluggy:sync] Workspace obtido:', workspace.id)
 
   // Buscar conexão
   const { data: connectionData, error: connectionError } = await supabase
@@ -119,6 +129,9 @@ export async function syncPluggyConnection(connectionId: string): Promise<{
   let accountsUpserted = 0
   let transactionsUpserted = 0
   let accountsProcessed = 0
+  let cardsCreated = 0
+  let purchasesCreated = 0
+  let installmentsCreated = 0
 
   try {
     // 1. Buscar accounts do Pluggy usando o endpoint correto
@@ -133,6 +146,93 @@ export async function syncPluggyConnection(connectionId: string): Promise<{
 
     // 2. Para cada account, fazer upsert na tabela accounts
     for (const pluggyAccount of pluggyAccounts) {
+      // Verificar se é cartão de crédito
+      const isCard = isCreditCardAccount(pluggyAccount)
+      
+      if (isCard) {
+        // Processar como cartão de crédito
+        try {
+          const { cardId, isNew } = await getOrCreateCardFromPluggyAccount(pluggyAccount, entityId, connectionId)
+          if (isNew) {
+            cardsCreated++
+          }
+
+          // Buscar transações deste cartão
+          const fromDate = new Date()
+          fromDate.setDate(fromDate.getDate() - 90)
+          const fromDateStr = fromDate.toISOString().split('T')[0]
+          const toDateStr = new Date().toISOString().split('T')[0]
+
+          try {
+            const transactionsResponse = await pluggyFetch(
+              `/items/${itemId}/transactions?from=${fromDateStr}&to=${toDateStr}&accountId=${pluggyAccount.id}`,
+              { method: 'GET' }
+            )
+
+            const transactionsData = (await transactionsResponse.json()) as PluggyTransactionsResponse
+            const pluggyTransactions = transactionsData.results || []
+
+            // Processar transações de cartão (criar purchases e installments)
+            const cardResult = await processCardTransactions(
+              cardId,
+              entityId,
+              pluggyTransactions
+            )
+
+            purchasesCreated += cardResult.purchasesCreated
+            installmentsCreated += cardResult.installmentsCreated
+
+            // Também criar transactions no ledger (já feito pelo processCardTransactions via vinculação)
+            // Mas garantir que todas as transações estejam no ledger
+            for (const pluggyTx of pluggyTransactions) {
+              const transactionType = mapPluggyTransactionType(pluggyTx.type, pluggyTx.direction)
+              
+              const { data: existingTx } = await supabase
+                .from("transactions")
+                .select("id")
+                .eq("workspace_id", workspace.id)
+                .eq("entity_id", entityId)
+                .eq("external_id", pluggyTx.id)
+                .eq("source", "pluggy")
+                .maybeSingle()
+
+              const amount = Math.abs(pluggyTx.amount)
+              const transactionData = {
+                workspace_id: workspace.id,
+                entity_id: entityId,
+                account_id: null, // Cartões não têm account_id direto
+                type: transactionType,
+                amount: amount,
+                currency: pluggyAccount.currencyCode || 'BRL',
+                date: pluggyTx.date,
+                description: pluggyTx.description || 'Transação Pluggy',
+                source: 'pluggy',
+                external_id: pluggyTx.id,
+              }
+
+              if (!existingTx) {
+                const { error: insertError } = await supabase
+                  .from("transactions")
+                  .insert(transactionData)
+
+                if (!insertError) {
+                  transactionsUpserted++
+                }
+              }
+            }
+          } catch (txError) {
+            console.error(`[pluggy:sync] Error processing card transactions for ${pluggyAccount.id}:`, txError)
+          }
+        } catch (cardError) {
+          console.error(`[pluggy:sync] Error processing card ${pluggyAccount.id}:`, cardError)
+          // Continuar com próxima account
+        }
+        
+        accountsProcessed++
+        continue
+      }
+
+      // Processar como conta normal
       const accountType = mapPluggyAccountType(pluggyAccount.type, pluggyAccount.subtype)
 
       // Verificar se account já existe (por external_id) - usando constraint UNIQUE
@@ -354,11 +454,16 @@ export async function syncPluggyConnection(connectionId: string): Promise<{
 
     // Finalizar sync run com sucesso
     await finishSyncRunSuccess(syncRun.id, accountsUpserted, 0, transactionsUpserted)
+    
+    console.log(`[pluggy:sync] Sync completo: ${accountsUpserted} accounts, ${transactionsUpserted} transactions, ${cardsCreated} cards, ${purchasesCreated} purchases, ${installmentsCreated} installments`)
 
     return {
       accountsUpserted,
       transactionsUpserted,
       accountsProcessed,
+      cardsCreated,
+      purchasesCreated,
+      installmentsCreated,
     }
   } catch (syncError) {
     const errorMessage = syncError instanceof Error ? syncError.message : "Erro desconhecido"
