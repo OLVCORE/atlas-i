@@ -11,6 +11,7 @@ import {
   BarChart3,
   LayoutDashboard,
   Bell,
+  Upload,
 } from "lucide-react"
 
 export type NavItem = {
@@ -109,6 +110,13 @@ export const navGroups: NavGroup[] = [
         icon: BarChart3,
         group: "Operações",
         description: "Cronogramas financeiros (Contas a Pagar / Receber)",
+      },
+      {
+        label: "Importar Planilhas",
+        href: "/app/import",
+        icon: Upload,
+        group: "Operações",
+        description: "Importar extratos bancários, cartões e investimentos via CSV",
       },
     ],
   },
