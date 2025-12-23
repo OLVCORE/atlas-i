@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Mail, Eye, EyeOff } from "lucide-react"
 import { HelpTooltip } from "@/components/help/HelpTooltip"
+import Link from "next/link"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -368,6 +369,14 @@ export default function LoginPage() {
                 >
                   Criar conta
                 </Button>
+                <div className="text-center pt-2">
+                  <Link
+                    href="/forgot-password"
+                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Esqueci minha senha
+                  </Link>
+                </div>
               </div>
             </form>
           )}
