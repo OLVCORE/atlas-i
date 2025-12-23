@@ -52,7 +52,7 @@ export function PluggyConnectButton({
     scriptLoadingRef.current = true
 
     const script = document.createElement("script")
-    script.src = "https://cdn.pluggy.ai/pluggy-connect/v1/pluggy-connect.js"
+    script.src = "https://cdn.pluggy.ai/pluggy-connect/v2.7.0/pluggy-connect.js"
     script.async = true
     script.onload = () => {
       scriptLoadedRef.current = true
