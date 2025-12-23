@@ -104,6 +104,7 @@ export function ConnectionsWizardClient({
   const [envCheck, setEnvCheck] = useState<EnvStatus | null>(envStatus)
   const [validatingEnv, setValidatingEnv] = useState(false)
   const [catalogSearch, setCatalogSearch] = useState("")
+  const [openingPluggyWidget, setOpeningPluggyWidget] = useState(false)
 
   // Filtro de auditoria
   const [auditFilter, setAuditFilter] = useState<string>("")
@@ -157,6 +158,81 @@ export function ConnectionsWizardClient({
       alert(error instanceof Error ? error.message : "Erro ao sincronizar")
     } finally {
       setSyncingId(null)
+    }
+  }
+
+  const handleOpenPluggyWidget = async () => {
+    // Verificar se há provider Pluggy ativo
+    const pluggyProvider = providers.find((p) => p.catalog_code === 'pluggy' && p.status === 'active')
+    if (!pluggyProvider) {
+      alert("Configure e ative o provider Pluggy primeiro.")
+      return
+    }
+
+    setOpeningPluggyWidget(true)
+    try {
+      // Obter connect token
+      const tokenResponse = await fetch('/api/pluggy/connect-token')
+      if (!tokenResponse.ok) {
+        const errorData = await tokenResponse.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Erro ao obter connect token')
+      }
+
+      const { connectToken } = await tokenResponse.json()
+      if (!connectToken) {
+        throw new Error('Connect token não retornado')
+      }
+
+      // Verificar se PluggyConnect está disponível
+      if (typeof window === 'undefined' || !(window as any).PluggyConnect) {
+        throw new Error('Pluggy Connect widget não carregado. Recarregue a página.')
+      }
+
+      // Abrir widget
+      ;(window as any).PluggyConnect({
+        connectToken,
+        onSuccess: async (payload: any) => {
+          const itemId = payload?.itemId || payload?.item?.id
+
+          if (!itemId) {
+            alert('Erro: itemId não retornado pelo widget')
+            return
+          }
+
+          try {
+            // Persistir conexão
+            const response = await fetch('/api/connections', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                providerKey: 'pluggy',
+                externalConnectionId: itemId,
+                entityId: entities.length > 0 ? entities[0].id : undefined,
+              }),
+            })
+
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({}))
+              throw new Error(errorData.error || 'Erro ao salvar conexão')
+            }
+
+            // Recarregar página para mostrar nova conexão
+            router.refresh()
+          } catch (error) {
+            console.error('Erro ao salvar conexão:', error)
+            alert(error instanceof Error ? error.message : 'Erro ao salvar conexão')
+          }
+        },
+        onError: (error: any) => {
+          console.error('Erro no widget Pluggy:', error)
+          alert(error?.message || 'Erro ao conectar via Pluggy')
+        },
+      }).init()
+    } catch (error) {
+      console.error('Erro ao abrir widget Pluggy:', error)
+      alert(error instanceof Error ? error.message : 'Erro ao abrir widget Pluggy')
+    } finally {
+      setOpeningPluggyWidget(false)
     }
   }
 
@@ -470,13 +546,29 @@ export function ConnectionsWizardClient({
 
               <div className="flex justify-between items-center">
                 <h3 className="text-lg font-semibold">Conexões</h3>
-                <Button onClick={() => {
-                  setStep(3)
-                  setConnectionEntityId("")
-                  setConnectionProviderId("")
-                }} variant="outline">
-                  Nova Conexão
-                </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={handleOpenPluggyWidget}
+                    variant="default"
+                    disabled={openingPluggyWidget}
+                  >
+                    {openingPluggyWidget ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        Abrindo...
+                      </>
+                    ) : (
+                      'Conectar via Pluggy'
+                    )}
+                  </Button>
+                  <Button onClick={() => {
+                    setStep(3)
+                    setConnectionEntityId("")
+                    setConnectionProviderId("")
+                  }} variant="outline">
+                    Nova Conexão Manual
+                  </Button>
+                </div>
               </div>
 
               {connections.length === 0 ? (
