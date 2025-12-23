@@ -49,12 +49,33 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient()
     const {
       data: { user },
+      error: authError,
     } = await supabase.auth.getUser()
 
-    if (!user) {
+    if (authError || !user) {
+      console.error('[pluggy:connect-token:GET] Auth error:', authError?.message || 'No user')
       return NextResponse.json(
-        { error: "Não autenticado" },
+        { error: "Não autenticado", details: authError?.message },
         { status: 401 }
+      )
+    }
+
+    // Verificar variáveis de ambiente
+    const clientId = process.env.PLUGGY_CLIENT_ID
+    const clientSecret = process.env.PLUGGY_CLIENT_SECRET
+
+    if (!clientId || !clientSecret) {
+      console.error('[pluggy:connect-token:GET] Missing env vars', {
+        hasClientId: !!clientId,
+        hasClientSecret: !!clientSecret,
+        userId: user.id,
+      })
+      return NextResponse.json(
+        {
+          error: "Missing Pluggy env vars",
+          message: "PLUGGY_CLIENT_ID e PLUGGY_CLIENT_SECRET devem estar configurados",
+        },
+        { status: 500 }
       )
     }
 
@@ -70,14 +91,19 @@ export async function GET(request: NextRequest) {
     })
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Erro desconhecido"
-    console.error('[pluggy:connect-token] Erro (GET):', errorMessage)
+    const stack = error instanceof Error ? error.stack : undefined
+    console.error('[pluggy:connect-token:GET] Error:', {
+      message: errorMessage,
+      stack,
+    })
 
     // Fail-closed: verificar se é erro de configuração
-    if (errorMessage.includes('deve estar configurado')) {
+    if (errorMessage.includes('deve estar configurado') || errorMessage.includes('PLUGGY_CLIENT')) {
       return NextResponse.json(
         {
           error: "misconfig",
           message: "Configuração ausente. Verifique PLUGGY_CLIENT_ID e PLUGGY_CLIENT_SECRET.",
+          details: errorMessage,
         },
         { status: 500 }
       )
@@ -87,6 +113,7 @@ export async function GET(request: NextRequest) {
       {
         error: "internal_error",
         message: "Erro ao criar connect token",
+        details: errorMessage,
       },
       { status: 500 }
     )
@@ -98,6 +125,25 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = (await request.json().catch(() => ({}))) as ConnectTokenRequest
+
+    // Verificar variáveis de ambiente
+    const clientId = process.env.PLUGGY_CLIENT_ID
+    const clientSecret = process.env.PLUGGY_CLIENT_SECRET
+
+    if (!clientId || !clientSecret) {
+      console.error('[pluggy:connect-token:POST] Missing env vars', {
+        hasClientId: !!clientId,
+        hasClientSecret: !!clientSecret,
+      })
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Missing Pluggy env vars",
+          message: "PLUGGY_CLIENT_ID e PLUGGY_CLIENT_SECRET devem estar configurados",
+        },
+        { status: 500 }
+      )
+    }
 
     const requestBody: Record<string, any> = {}
     if (body.clientUserId) {
@@ -125,15 +171,20 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Erro desconhecido"
-    console.error('[pluggy:connect-token] Erro:', errorMessage)
+    const stack = error instanceof Error ? error.stack : undefined
+    console.error('[pluggy:connect-token:POST] Error:', {
+      message: errorMessage,
+      stack,
+    })
 
     // Fail-closed: verificar se é erro de configuração
-    if (errorMessage.includes('deve estar configurado')) {
+    if (errorMessage.includes('deve estar configurado') || errorMessage.includes('PLUGGY_CLIENT')) {
       return NextResponse.json(
         {
           ok: false,
           error: "misconfig",
           message: "Configuração ausente. Verifique PLUGGY_CLIENT_ID e PLUGGY_CLIENT_SECRET.",
+          details: errorMessage,
         },
         { status: 500 }
       )
@@ -144,6 +195,7 @@ export async function POST(request: NextRequest) {
         ok: false,
         error: "internal_error",
         message: "Erro ao criar connect token",
+        details: errorMessage,
       },
       { status: 500 }
     )

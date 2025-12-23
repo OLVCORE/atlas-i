@@ -14,12 +14,16 @@ type PluggyConnectButtonProps = {
 
 declare global {
   interface Window {
-    PluggyConnect?: (options: {
+    PluggyConnect?: new (options: {
       connectToken: string
       onSuccess: (payload: any) => void
       onError: (error: any) => void
+      onClose?: () => void
     }) => {
-      init: () => void
+      open?: () => void
+      init?: () => void
+      destroy?: () => void
+      close?: () => void
     }
   }
 }
@@ -34,6 +38,7 @@ export function PluggyConnectButton({
   const [loading, setLoading] = useState(false)
   const scriptLoadedRef = useRef(false)
   const scriptLoadingRef = useRef(false)
+  const widgetRef = useRef<any>(null)
 
   useEffect(() => {
     if (scriptLoadedRef.current || scriptLoadingRef.current) {
@@ -72,6 +77,19 @@ export function PluggyConnectButton({
     }
   }, [])
 
+  useEffect(() => {
+    return () => {
+      if (widgetRef.current) {
+        if (typeof widgetRef.current.destroy === 'function') {
+          widgetRef.current.destroy()
+        } else if (typeof widgetRef.current.close === 'function') {
+          widgetRef.current.close()
+        }
+        widgetRef.current = null
+      }
+    }
+  }, [])
+
   const handleClick = async () => {
     if (loading || disabled) {
       return
@@ -99,8 +117,20 @@ export function PluggyConnectButton({
 
       const tokenResponse = await fetch("/api/pluggy/connect-token")
       if (!tokenResponse.ok) {
-        const errorData = await tokenResponse.json().catch(() => ({}))
-        throw new Error(errorData.error || "Erro ao obter connect token")
+        const errorText = await tokenResponse.text().catch(() => "Erro desconhecido")
+        let errorMessage = `Erro ao obter connect token (${tokenResponse.status})`
+        try {
+          const errorData = JSON.parse(errorText)
+          errorMessage = errorData.error || errorData.message || errorMessage
+          if (errorData.details) {
+            errorMessage += `: ${errorData.details}`
+          }
+        } catch {
+          if (errorText) {
+            errorMessage += `: ${errorText.substring(0, 200)}`
+          }
+        }
+        throw new Error(errorMessage)
       }
 
       const { connectToken } = await tokenResponse.json()
@@ -108,8 +138,12 @@ export function PluggyConnectButton({
         throw new Error("Connect token não retornado")
       }
 
-      const PluggyConnect = window.PluggyConnect
-      const widget = PluggyConnect({
+      const PluggyConnectCtor = window.PluggyConnect
+      if (!PluggyConnectCtor) {
+        throw new Error("PluggyConnect não está disponível")
+      }
+
+      const widget = new PluggyConnectCtor({
         connectToken,
         onSuccess: async (payload: any) => {
           const itemId = payload?.itemId || payload?.item?.id
@@ -117,6 +151,7 @@ export function PluggyConnectButton({
           if (!itemId) {
             const error = new Error("itemId não retornado pelo widget")
             onError?.(error)
+            setLoading(false)
             return
           }
 
@@ -132,8 +167,20 @@ export function PluggyConnectButton({
             })
 
             if (!response.ok) {
-              const errorData = await response.json().catch(() => ({}))
-              throw new Error(errorData.error || "Erro ao salvar conexão")
+              const errorText = await response.text().catch(() => "Erro desconhecido")
+              let errorMessage = `Erro ao salvar conexão (${response.status})`
+              try {
+                const errorData = JSON.parse(errorText)
+                errorMessage = errorData.error || errorData.message || errorMessage
+                if (errorData.details) {
+                  errorMessage += `: ${errorData.details}`
+                }
+              } catch {
+                if (errorText) {
+                  errorMessage += `: ${errorText.substring(0, 200)}`
+                }
+              }
+              throw new Error(errorMessage)
             }
 
             onSuccess?.(itemId)
@@ -151,9 +198,20 @@ export function PluggyConnectButton({
           onError?.(err)
           setLoading(false)
         },
+        onClose: () => {
+          setLoading(false)
+        },
       })
 
-      widget.init()
+      widgetRef.current = widget
+
+      if (typeof widget.open === 'function') {
+        widget.open()
+      } else if (typeof widget.init === 'function') {
+        widget.init()
+      } else {
+        throw new Error("Widget não possui método open() ou init()")
+      }
     } catch (error) {
       console.error("Erro ao abrir widget Pluggy:", error)
       const err = error instanceof Error ? error : new Error("Erro desconhecido")
