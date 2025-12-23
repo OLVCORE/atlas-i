@@ -56,7 +56,7 @@ export function ImportWizard({
   accounts: Array<{ id: string; name: string; entity_id: string }>
   onImportComplete?: () => void
 }) {
-  const [step, setStep] = useState<1 | 2 | 3>(1)
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
   const [file, setFile] = useState<File | null>(null)
   const [entityId, setEntityId] = useState<string>("")
   const [accountId, setAccountId] = useState<string>("")
@@ -65,20 +65,55 @@ export function ImportWizard({
   const [skipDuplicates, setSkipDuplicates] = useState(true)
   const [autoReconcile, setAutoReconcile] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [previewing, setPreviewing] = useState(false)
+  const [preview, setPreview] = useState<any>(null)
   const [result, setResult] = useState<ImportResult | null>(null)
 
   // Filtrar contas da entidade selecionada
   const entityAccounts = accounts.filter(acc => acc.entity_id === entityId)
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
     if (selectedFile) {
       if (!selectedFile.name.endsWith('.csv')) {
         alert('Por favor, selecione um arquivo CSV (.csv)')
         return
       }
+      
+      // Validar tamanho (10MB)
+      if (selectedFile.size > 10 * 1024 * 1024) {
+        alert(`Arquivo muito grande. Tamanho máximo: 10MB. Tamanho atual: ${(selectedFile.size / 1024 / 1024).toFixed(2)}MB`)
+        return
+      }
+      
       setFile(selectedFile)
-      setStep(2)
+      setPreview(null)
+      setPreviewing(true)
+      
+      // Fazer preview
+      try {
+        const formData = new FormData()
+        formData.append("file", selectedFile)
+        
+        const response = await fetch("/api/import/preview", {
+          method: "POST",
+          body: formData,
+        })
+        
+        const data = await response.json()
+        if (data.ok) {
+          setPreview(data.preview)
+          setStep(2) // Preview step
+        } else {
+          alert(`Erro ao fazer preview: ${data.error || data.message}`)
+          setFile(null)
+        }
+      } catch (error) {
+        alert(`Erro ao fazer preview: ${error instanceof Error ? error.message : 'Erro desconhecido'}`)
+        setFile(null)
+      } finally {
+        setPreviewing(false)
+      }
     }
   }
 
@@ -163,13 +198,19 @@ export function ImportWizard({
                   accept=".csv"
                   onChange={handleFileChange}
                   className="hidden"
+                  disabled={previewing}
                 />
               </Label>
               <p className="mt-2 text-xs text-gray-500">
-                Formatos suportados: CSV (.csv)
+                Formatos suportados: CSV (.csv) - Máximo 10MB
               </p>
+              {previewing && (
+                <p className="mt-2 text-sm text-blue-600">
+                  Analisando arquivo...
+                </p>
+              )}
             </div>
-            {file && (
+            {file && !previewing && (
               <div className="flex items-center gap-2 text-sm text-gray-600">
                 <FileText className="h-4 w-4" />
                 <span>{file.name}</span>
@@ -179,9 +220,65 @@ export function ImportWizard({
           </div>
         )}
 
-        {/* Step 2: Configurar importação */}
-        {step === 2 && (
+        {/* Step 2: Preview e Configuração */}
+        {step === 2 && preview && (
           <div className="space-y-4">
+            {/* Preview */}
+            <div className="border rounded-lg p-4 bg-gray-50">
+              <h3 className="font-medium mb-2">Preview do Arquivo</h3>
+              <div className="text-sm text-gray-600 mb-3">
+                <p>Total de linhas: {preview.metadata.totalRows}</p>
+                <p>Linhas válidas: {preview.metadata.validRows}</p>
+                <p>Linhas com erro: {preview.metadata.invalidRows}</p>
+                <p>Formato detectado: {preview.metadata.detectedFormat}</p>
+              </div>
+              
+              {preview.rows.length > 0 && (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-xs border">
+                    <thead className="bg-gray-200">
+                      <tr>
+                        <th className="border p-2">Data</th>
+                        <th className="border p-2">Descrição</th>
+                        <th className="border p-2">Valor</th>
+                        <th className="border p-2">Tipo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {preview.rows.map((row: any, idx: number) => (
+                        <tr key={idx} className={row.validationErrors ? 'bg-yellow-50' : ''}>
+                          <td className="border p-2">{row.date}</td>
+                          <td className="border p-2">{row.description.substring(0, 40)}...</td>
+                          <td className="border p-2">
+                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(row.amount)}
+                          </td>
+                          <td className="border p-2">{row.type === 'income' ? 'Receita' : 'Despesa'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              
+              {preview.errors.length > 0 && (
+                <div className="mt-3 p-3 bg-red-50 rounded text-xs">
+                  <p className="font-medium text-red-800 mb-1">Erros encontrados:</p>
+                  <ul className="list-disc list-inside text-red-600 space-y-1">
+                    {preview.errors.map((err: any, idx: number) => (
+                      <li key={idx}>Linha {err.row}: {err.message}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              
+              {preview.metadata.hasMoreRows && (
+                <p className="mt-2 text-xs text-gray-500">
+                  ... e mais {preview.metadata.totalRows - 10} linhas
+                </p>
+              )}
+            </div>
+            
+            {/* Configuração */}
             <div>
               <Label htmlFor="entity">Entidade *</Label>
               <Select value={entityId} onValueChange={setEntityId}>
@@ -252,12 +349,12 @@ export function ImportWizard({
                   checked={autoReconcile}
                   onChange={(e) => setAutoReconcile(e.target.checked)}
                 />
-                <span>Tentar conciliar automaticamente (em desenvolvimento)</span>
+                <span>Conciliação automática com schedules/commitments</span>
               </Label>
             </div>
 
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setStep(1)}>
+              <Button variant="outline" onClick={() => { setStep(1); setPreview(null) }}>
                 Voltar
               </Button>
               <Button

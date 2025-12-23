@@ -48,6 +48,22 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Validar tamanho do arquivo (máximo 10MB)
+    const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: `Arquivo muito grande. Tamanho máximo: 10MB. Tamanho atual: ${(file.size / 1024 / 1024).toFixed(2)}MB` },
+        { status: 400 }
+      )
+    }
+
+    if (file.size === 0) {
+      return NextResponse.json(
+        { error: "Arquivo vazio" },
+        { status: 400 }
+      )
+    }
+
     // Validar tipo de arquivo
     const allowedTypes = [
       "text/csv",
@@ -63,8 +79,34 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Ler conteúdo do arquivo
-    const csvContent = await file.text()
+    // Ler conteúdo do arquivo com validação de encoding
+    let csvContent: string
+    try {
+      csvContent = await file.text()
+      
+      // Validar que o conteúdo não está vazio após leitura
+      if (!csvContent || csvContent.trim().length === 0) {
+        return NextResponse.json(
+          { error: "Arquivo vazio ou com encoding inválido. Use UTF-8." },
+          { status: 400 }
+        )
+      }
+      
+      // Validar encoding básico (verificar se há caracteres válidos)
+      // Se o arquivo tem muitos caracteres de substituição, pode ser encoding errado
+      const replacementCharCount = (csvContent.match(/\uFFFD/g) || []).length
+      if (replacementCharCount > csvContent.length * 0.1) {
+        return NextResponse.json(
+          { error: "Encoding inválido detectado. Por favor, salve o arquivo como UTF-8." },
+          { status: 400 }
+        )
+      }
+    } catch (readError) {
+      return NextResponse.json(
+        { error: `Erro ao ler arquivo: ${readError instanceof Error ? readError.message : 'Erro desconhecido'}` },
+        { status: 400 }
+      )
+    }
 
     // Preparar opções de importação
     const importOptions: ImportOptions = {

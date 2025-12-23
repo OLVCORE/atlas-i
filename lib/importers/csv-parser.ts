@@ -18,6 +18,7 @@ export type ParsedRow = {
   accountName?: string // Nome da conta (se houver coluna)
   category?: string // Categoria (opcional)
   raw: Record<string, string> // Dados brutos da linha
+  validationErrors?: string[] // Erros de validação (se houver)
 }
 
 export type ParseResult = {
@@ -372,7 +373,35 @@ export function parseCSV(csvContent: string, options?: {
         continue
       }
       
-      // Adicionar linha válida
+      // Validações adicionais
+      const validationErrors: string[] = []
+      
+      // Validar valor não negativo
+      if (amount < 0) {
+        validationErrors.push('Valor negativo detectado (será convertido para positivo)')
+      }
+      
+      // Validar valor muito grande (possível erro de formatação)
+      if (amount > 1000000000) { // 1 bilhão
+        validationErrors.push('Valor muito grande (possível erro de formatação)')
+      }
+      
+      // Validar data não muito no futuro (mais de 1 ano)
+      const dateObj = new Date(date)
+      const oneYearFromNow = new Date()
+      oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1)
+      if (dateObj > oneYearFromNow) {
+        validationErrors.push('Data muito no futuro (mais de 1 ano)')
+      }
+      
+      // Validar data não muito no passado (mais de 10 anos)
+      const tenYearsAgo = new Date()
+      tenYearsAgo.setFullYear(tenYearsAgo.getFullYear() - 10)
+      if (dateObj < tenYearsAgo) {
+        validationErrors.push('Data muito no passado (mais de 10 anos)')
+      }
+      
+      // Adicionar linha válida (mesmo com warnings de validação)
       rows.push({
         date,
         description: descriptionValue.trim(),
@@ -381,6 +410,7 @@ export function parseCSV(csvContent: string, options?: {
         accountName,
         category,
         raw: row,
+        validationErrors: validationErrors.length > 0 ? validationErrors : undefined,
       })
     } catch (error) {
       errors.push({

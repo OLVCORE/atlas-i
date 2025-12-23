@@ -335,6 +335,49 @@ async function settleCardInstallmentsFromTransactions(
 }
 
 /**
+ * Concilia automaticamente transações importadas com schedules/commitments
+ */
+async function autoReconcileImportedTransactions(
+  entityId: string,
+  transactions: Array<{ id: string; date: string; amount: number; description: string }>
+): Promise<number> {
+  const { autoMatchSchedules, linkTransactionToSchedule } = await import('@/lib/realization')
+  
+  let reconciledCount = 0
+  
+  // Preparar transações no formato esperado
+  const transactionsForMatch = transactions.map(tx => ({
+    id: tx.id,
+    amount: Number(tx.amount),
+    date: tx.date,
+    entity_id: entityId,
+  }))
+  
+  // Buscar matches automáticos
+  const candidates = await autoMatchSchedules(transactionsForMatch, {
+    dateToleranceDays: 7,
+    amountToleranceCents: 1,
+    onlyUnlinked: true,
+  })
+  
+  // Filtrar apenas matches de alta confiança (>= 80%)
+  const highConfidenceMatches = candidates.filter(c => c.confidence >= 80)
+  
+  // Fazer conciliação automática apenas para matches de alta confiança
+  for (const match of highConfidenceMatches) {
+    try {
+      await linkTransactionToSchedule(match.scheduleId, match.transactionId)
+      reconciledCount++
+    } catch (linkError) {
+      console.error(`[import] Erro ao conciliar schedule ${match.scheduleId} com transaction ${match.transactionId}:`, linkError)
+      // Continuar com os próximos matches mesmo se um falhar
+    }
+  }
+  
+  return reconciledCount
+}
+
+/**
  * Importa planilha CSV
  */
 export async function importSpreadsheet(
@@ -513,12 +556,25 @@ export async function importSpreadsheet(
       }
     }
     
-    // Se autoReconcile, tentar conciliar automaticamente
-    if (options.autoReconcile && result.imported.transactions > 0) {
-      // TODO: Implementar conciliação automática com schedules/commitments
-      result.warnings.push({
-        message: 'Conciliação automática com schedules ainda não implementada. Use a página de reconciliação para conciliar manualmente.',
-      })
+    // Se autoReconcile, tentar conciliar automaticamente com schedules/commitments
+    if (options.autoReconcile && insertedTransactions.length > 0) {
+      try {
+        const reconciledCount = await autoReconcileImportedTransactions(
+          options.entityId,
+          insertedTransactions
+        )
+        
+        if (reconciledCount > 0) {
+          result.warnings.push({
+            message: `${reconciledCount} transação(ões) foram conciliadas automaticamente com schedules/commitments`,
+          })
+        }
+      } catch (reconcileError) {
+        console.error('[import] Erro ao conciliar automaticamente:', reconcileError)
+        result.warnings.push({
+          message: 'Erro ao conciliar automaticamente. Use a página de reconciliação para conciliar manualmente.',
+        })
+      }
     }
     
     result.success = result.imported.transactions > 0

@@ -42,7 +42,7 @@ export default async function ImportPage() {
             </p>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2 text-sm">
+            <div className="space-y-4 text-sm">
               <div>
                 <strong>Obrigatórias:</strong>
                 <ul className="list-disc list-inside ml-4 mt-1 space-y-1">
@@ -58,6 +58,34 @@ export default async function ImportPage() {
                   <li><code>Categoria</code> ou <code>Category</code> - Categoria da transação</li>
                 </ul>
               </div>
+              
+              <div className="mt-4 p-4 bg-blue-50 rounded-lg">
+                <strong className="text-blue-900">Baixar Templates:</strong>
+                <div className="mt-2 flex gap-2 flex-wrap">
+                  <a
+                    href="/api/import/template?type=checking"
+                    download
+                    className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
+                  >
+                    Template Conta Corrente
+                  </a>
+                  <a
+                    href="/api/import/template?type=card"
+                    download
+                    className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
+                  >
+                    Template Cartão de Crédito
+                  </a>
+                  <a
+                    href="/api/import/template?type=investment"
+                    download
+                    className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
+                  >
+                    Template Investimento
+                  </a>
+                </div>
+              </div>
+              
               <div className="mt-4 p-4 bg-gray-50 rounded-lg">
                 <strong>Exemplo de formato:</strong>
                 <pre className="mt-2 text-xs overflow-x-auto">
