@@ -3,7 +3,7 @@
  */
 
 import { createClient } from "@/lib/supabase/server"
-import { listAllEntities } from "@/lib/entities"
+import { listEntities } from "@/lib/entities"
 import { listAllAccounts } from "@/lib/accounts"
 import { ScrapersManager } from "@/components/scrapers-manager"
 
@@ -17,7 +17,7 @@ export default async function ScrapersPage() {
     return <div>Não autenticado</div>
   }
 
-  const entities = await listAllEntities()
+  const entities = await listEntities()
   const accounts = await listAllAccounts()
 
   return (
