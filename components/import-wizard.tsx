@@ -241,168 +241,169 @@ export function ImportWizard({
             ) : (
               <>
                 <div className="space-y-4">
-            {/* Preview */}
-            <div className="border rounded-lg p-4 bg-gray-50">
-              <h3 className="font-medium mb-2">Preview do Arquivo</h3>
-              <div className="text-sm text-gray-600 mb-3">
-                <p>Total de linhas: {preview.metadata.totalRows}</p>
-                <p>Linhas válidas: {preview.metadata.validRows}</p>
-                <p>Linhas com erro: {preview.metadata.invalidRows}</p>
-                <p>Formato detectado: {preview.metadata.detectedFormat}</p>
-              </div>
-              
-              {preview.rows.length > 0 && (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-xs border">
-                    <thead className="bg-gray-200">
-                      <tr>
-                        <th className="border p-2">Data</th>
-                        <th className="border p-2">Descrição</th>
-                        <th className="border p-2">Valor</th>
-                        <th className="border p-2">Tipo</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {preview.rows.map((row: any, idx: number) => (
-                        <tr key={idx} className={row.validationErrors ? 'bg-yellow-50' : ''}>
-                          <td className="border p-2">{row.date}</td>
-                          <td className="border p-2">{row.description.substring(0, 40)}...</td>
-                          <td className="border p-2">
-                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(row.amount)}
-                          </td>
-                          <td className="border p-2">{row.type === 'income' ? 'Receita' : 'Despesa'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              
-              {preview.errors.length > 0 && (
-                <div className="mt-3 p-3 bg-red-50 rounded text-xs">
-                  <p className="font-medium text-red-800 mb-1">Erros encontrados:</p>
-                  <ul className="list-disc list-inside text-red-600 space-y-1">
-                    {preview.errors.map((err: any, idx: number) => (
-                      <li key={idx}>Linha {err.row}: {err.message}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              
-              {preview.metadata.hasMoreRows && (
-                <p className="mt-2 text-xs text-gray-500">
-                  ... e mais {preview.metadata.totalRows - 10} linhas
-                </p>
-              )}
-            </div>
-            
-                {/* Configuração */}
-                <div className="border-t pt-4">
-                  <h3 className="font-medium mb-4">Configuração da Importação</h3>
+                  {/* Preview */}
+                  <div className="border rounded-lg p-4 bg-gray-50">
+                    <h3 className="font-medium mb-2">Preview do Arquivo</h3>
+                    <div className="text-sm text-gray-600 mb-3">
+                      <p>Total de linhas: {preview.metadata.totalRows}</p>
+                      <p>Linhas válidas: {preview.metadata.validRows}</p>
+                      <p>Linhas com erro: {preview.metadata.invalidRows}</p>
+                      <p>Formato detectado: {preview.metadata.detectedFormat}</p>
+                    </div>
+                    
+                    {preview.rows.length > 0 && (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-xs border">
+                          <thead className="bg-gray-200">
+                            <tr>
+                              <th className="border p-2">Data</th>
+                              <th className="border p-2">Descrição</th>
+                              <th className="border p-2">Valor</th>
+                              <th className="border p-2">Tipo</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {preview.rows.map((row: any, idx: number) => (
+                              <tr key={idx} className={row.validationErrors ? 'bg-yellow-50' : ''}>
+                                <td className="border p-2">{row.date}</td>
+                                <td className="border p-2">{row.description.substring(0, 40)}...</td>
+                                <td className="border p-2">
+                                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(row.amount)}
+                                </td>
+                                <td className="border p-2">{row.type === 'income' ? 'Receita' : 'Despesa'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    
+                    {preview.errors.length > 0 && (
+                      <div className="mt-3 p-3 bg-red-50 rounded text-xs">
+                        <p className="font-medium text-red-800 mb-1">Erros encontrados:</p>
+                        <ul className="list-disc list-inside text-red-600 space-y-1">
+                          {preview.errors.map((err: any, idx: number) => (
+                            <li key={idx}>Linha {err.row}: {err.message}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    
+                    {preview.metadata.hasMoreRows && (
+                      <p className="mt-2 text-xs text-gray-500">
+                        ... e mais {preview.metadata.totalRows - 10} linhas
+                      </p>
+                    )}
+                  </div>
                   
-                  <div className="space-y-4">
-                    <div>
-                      <Label htmlFor="entity">Entidade *</Label>
-                      <p className="text-xs text-muted-foreground mb-2">
-                        Selecione a entidade (PF ou PJ) à qual estas transações pertencem
-                      </p>
-                      <Select value={entityId} onValueChange={setEntityId}>
-                        <SelectTrigger id="entity">
-                          <SelectValue placeholder="Selecione a entidade (PF ou PJ)" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {entities.map((entity) => (
-                            <SelectItem key={entity.id} value={entity.id}>
-                              {entity.legal_name} ({entity.type === 'PF' ? 'Pessoa Física' : 'Pessoa Jurídica'})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  {/* Configuração */}
+                  <div className="border-t pt-4">
+                    <h3 className="font-medium mb-4">Configuração da Importação</h3>
+                    
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="entity">Entidade *</Label>
+                        <p className="text-xs text-muted-foreground mb-2">
+                          Selecione a entidade (PF ou PJ) à qual estas transações pertencem
+                        </p>
+                        <Select value={entityId} onValueChange={setEntityId}>
+                          <SelectTrigger id="entity">
+                            <SelectValue placeholder="Selecione a entidade (PF ou PJ)" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {entities.map((entity) => (
+                              <SelectItem key={entity.id} value={entity.id}>
+                                {entity.legal_name} ({entity.type === 'PF' ? 'Pessoa Física' : 'Pessoa Jurídica'})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-                    <div>
-                      <Label htmlFor="account">Conta (opcional)</Label>
-                      <p className="text-xs text-muted-foreground mb-2">
-                        Selecione uma conta existente ou deixe vazio para criar automaticamente
-                      </p>
-                      <Select 
-                        value={accountId || undefined} 
-                        onValueChange={(v) => setAccountId(v === "__none__" ? "" : v)}
-                        disabled={!entityId}
-                      >
-                        <SelectTrigger id="account">
-                          <SelectValue placeholder={entityId ? "Selecione a conta (opcional)" : "Selecione primeiro a entidade"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">Nenhuma (criar automaticamente)</SelectItem>
-                          {entityAccounts.map((account) => (
-                            <SelectItem key={account.id} value={account.id}>
-                              {account.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                      <div>
+                        <Label htmlFor="account">Conta (opcional)</Label>
+                        <p className="text-xs text-muted-foreground mb-2">
+                          Selecione uma conta existente ou deixe vazio para criar automaticamente
+                        </p>
+                        <Select 
+                          value={accountId || undefined} 
+                          onValueChange={(v) => setAccountId(v === "__none__" ? "" : v)}
+                          disabled={!entityId}
+                        >
+                          <SelectTrigger id="account">
+                            <SelectValue placeholder={entityId ? "Selecione a conta (opcional)" : "Selecione primeiro a entidade"} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Nenhuma (criar automaticamente)</SelectItem>
+                            {entityAccounts.map((account) => (
+                              <SelectItem key={account.id} value={account.id}>
+                                {account.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-                    {!accountId && entityId && (
-              <div className="space-y-2 p-4 bg-gray-50 rounded-lg">
-                <Label htmlFor="accountName">Nome da nova conta (se não existir)</Label>
-                <Input
-                  id="accountName"
-                  value={accountName}
-                  onChange={(e) => setAccountName(e.target.value)}
-                  placeholder="Ex: Conta Corrente BB"
-                />
-                <Select value={accountType} onValueChange={(v) => setAccountType(v as any)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="checking">Conta Corrente</SelectItem>
-                    <SelectItem value="investment">Investimento</SelectItem>
-                    <SelectItem value="other">Outro</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+                      {!accountId && entityId && (
+                        <div className="space-y-2 p-4 bg-gray-50 rounded-lg">
+                          <Label htmlFor="accountName">Nome da nova conta (se não existir)</Label>
+                          <Input
+                            id="accountName"
+                            value={accountName}
+                            onChange={(e) => setAccountName(e.target.value)}
+                            placeholder="Ex: Conta Corrente BB"
+                          />
+                          <Select value={accountType} onValueChange={(v) => setAccountType(v as any)}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="checking">Conta Corrente</SelectItem>
+                              <SelectItem value="investment">Investimento</SelectItem>
+                              <SelectItem value="other">Outro</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
 
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={skipDuplicates}
-                  onChange={(e) => setSkipDuplicates(e.target.checked)}
-                />
-                <span>Pular transações duplicadas (recomendado)</span>
-              </Label>
-              <Label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={autoReconcile}
-                  onChange={(e) => setAutoReconcile(e.target.checked)}
-                />
-                <span>Conciliação automática com schedules/commitments</span>
-              </Label>
-            </div>
+                      <div className="space-y-2">
+                        <Label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={skipDuplicates}
+                            onChange={(e) => setSkipDuplicates(e.target.checked)}
+                          />
+                          <span>Pular transações duplicadas (recomendado)</span>
+                        </Label>
+                        <Label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={autoReconcile}
+                            onChange={(e) => setAutoReconcile(e.target.checked)}
+                          />
+                          <span>Conciliação automática com schedules/commitments</span>
+                        </Label>
+                      </div>
 
-                    <div className="flex gap-2 pt-4">
-                      <Button variant="outline" onClick={() => { setStep(1); setPreview(null) }}>
-                        Voltar
-                      </Button>
-                      <Button
-                        onClick={handleImport}
-                        disabled={!entityId || importing}
-                        className="flex-1"
-                      >
-                        {importing ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Importando...
-                          </>
-                        ) : (
-                          "Importar"
-                        )}
-                      </Button>
+                      <div className="flex gap-2 pt-4">
+                        <Button variant="outline" onClick={() => { setStep(1); setPreview(null) }}>
+                          Voltar
+                        </Button>
+                        <Button
+                          onClick={handleImport}
+                          disabled={!entityId || importing}
+                          className="flex-1"
+                        >
+                          {importing ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Importando...
+                            </>
+                          ) : (
+                            "Importar"
+                          )}
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>
