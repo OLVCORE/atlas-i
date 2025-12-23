@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   Bell,
   Upload,
+  Bot,
 } from "lucide-react"
 
 export type NavItem = {
@@ -117,6 +118,13 @@ export const navGroups: NavGroup[] = [
         icon: Upload,
         group: "Operações",
         description: "Importar extratos bancários, cartões e investimentos via CSV",
+      },
+      {
+        label: "Scrapers Bancários",
+        href: "/app/scrapers",
+        icon: Bot,
+        group: "Operações",
+        description: "Automação de importação via scraping dos sites dos bancos",
       },
     ],
   },

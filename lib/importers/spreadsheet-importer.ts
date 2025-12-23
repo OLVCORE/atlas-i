@@ -20,6 +20,7 @@ export type ImportOptions = {
   accountType?: 'checking' | 'investment' | 'other'
   skipDuplicates?: boolean // Pular transações já importadas (por external_id)
   autoReconcile?: boolean // Tentar conciliar automaticamente com schedules
+  source?: 'csv' | 'scraper' // Origem da importação
 }
 
 export type ImportResult = {
@@ -53,7 +54,8 @@ export type ImportResult = {
 function generateExternalId(
   row: ParsedRow, 
   entityId: string, 
-  accountId: string | null
+  accountId: string | null,
+  source: 'csv' | 'scraper' = 'csv'
 ): string {
   // Normalizar descrição (remover espaços extras, mas manter diferenças de parcelas)
   const normalizedDesc = row.description.trim().replace(/\s+/g, ' ')
@@ -61,7 +63,7 @@ function generateExternalId(
   // Incluir account_id no hash para diferenciar transações da mesma descrição em contas diferentes
   const accountPart = accountId ? `_${accountId.substring(0, 8)}` : ''
   
-  const hash = `${row.date}|${normalizedDesc}|${row.amount}|${row.type}${accountPart}`
+  const hash = `${row.date}|${normalizedDesc}|${row.amount}|${row.type}${accountPart}|${source}`
   
   // Usar hash simples (em produção, poderia usar crypto)
   const hashValue = hash.split('').reduce((acc, char) => {
@@ -69,7 +71,7 @@ function generateExternalId(
     return ((acc << 5) - acc) + charCode
   }, 0)
   
-  return `csv_${entityId}_${Math.abs(hashValue).toString(36)}`
+  return `${source}_${entityId}_${Math.abs(hashValue).toString(36)}`
 }
 
 /**
@@ -472,8 +474,9 @@ export async function importSpreadsheet(
       // Preparar transação
       const amount = row.type === 'expense' ? -Math.abs(row.amount) : Math.abs(row.amount)
       
-      // Gerar external_id (inclui accountId para diferenciar contas)
-      const externalId = generateExternalId(row, options.entityId, accountId || null)
+      // Gerar external_id (inclui accountId e source para diferenciar)
+      const source = options.source || 'csv'
+      const externalId = generateExternalId(row, options.entityId, accountId || null, source)
       
       // Verificar duplicata se solicitado
       if (options.skipDuplicates) {
@@ -508,7 +511,7 @@ export async function importSpreadsheet(
         currency: 'BRL',
         date: row.date,
         description: row.description,
-        source: 'csv',
+        source: options.source || 'csv',
         external_id: externalId,
       })
     }
