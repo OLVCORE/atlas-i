@@ -8,6 +8,8 @@ export type CnpjProviderResult = {
     code?: string
     text?: string
   }
+  mainActivityCode?: string
+  mainActivityText?: string
   address?: {
     street?: string
     number?: string

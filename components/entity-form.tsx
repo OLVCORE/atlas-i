@@ -40,6 +40,8 @@ type EnrichmentData = {
     code?: string
     text?: string
   }
+  mainActivityCode?: string
+  mainActivityText?: string
   address?: {
     street?: string
     number?: string
@@ -180,6 +182,7 @@ export function EntityForm({
       }
       
       // Preencher código CNAE (sempre quando disponível da API)
+      // Priorizar objeto mainActivity, depois campos diretos
       if (data.mainActivity) {
         if (data.mainActivity.code !== undefined && data.mainActivity.code !== null && data.mainActivity.code !== '') {
           console.log('[EntityForm] Preenchendo código CNAE:', data.mainActivity.code)
@@ -189,6 +192,16 @@ export function EntityForm({
         if (data.mainActivity.text !== undefined && data.mainActivity.text !== null && data.mainActivity.text !== '') {
           console.log('[EntityForm] Preenchendo descrição CNAE:', data.mainActivity.text)
           setMainActivityDesc(String(data.mainActivity.text).trim())
+        }
+      } else {
+        // Fallback para campos diretos se mainActivity não estiver presente
+        if (data.mainActivityCode !== undefined && data.mainActivityCode !== null && data.mainActivityCode !== '') {
+          console.log('[EntityForm] Preenchendo código CNAE (campo direto):', data.mainActivityCode)
+          setMainActivityCode(String(data.mainActivityCode).trim())
+        }
+        if (data.mainActivityText !== undefined && data.mainActivityText !== null && data.mainActivityText !== '') {
+          console.log('[EntityForm] Preenchendo descrição CNAE (campo direto):', data.mainActivityText)
+          setMainActivityDesc(String(data.mainActivityText).trim())
         }
       }
       if (data.address?.street) setAddressStreet(data.address.street)
