@@ -178,6 +178,12 @@ export function ConnectionsWizardClient({
   }
 
   const handleSync = async (connectionId: string) => {
+    // Prevenir múltiplas tentativas simultâneas
+    if (syncingId !== null) {
+      console.warn('[connections] Sync já em andamento, ignorando nova tentativa')
+      return
+    }
+
     const connection = connections.find((c) => c.id === connectionId)
     if (connection?.status !== 'active') {
       alert("Ative a conexão para sincronizar.")
@@ -185,6 +191,7 @@ export function ConnectionsWizardClient({
     }
     
     setSyncingId(connectionId)
+    
     try {
       const response = await fetch('/api/pluggy/sync', {
         method: 'POST',
@@ -196,12 +203,26 @@ export function ConnectionsWizardClient({
         const errorData = await response.json().catch(() => ({}))
         const errorMessage = errorData.error || errorData.message || `Erro ${response.status}`
         const details = errorData.details ? `: ${errorData.details}` : ''
-        throw new Error(`${errorMessage}${details}`)
+        
+        // Não fazer refresh quando há erro para evitar loops
+        const fullErrorMessage = `${errorMessage}${details}`
+        console.error('[connections] Sync error:', {
+          connectionId,
+          status: response.status,
+          error: fullErrorMessage,
+          errorData,
+        })
+        
+        // Mostrar erro de forma mais amigável
+        alert(`Erro ao sincronizar:\n\n${fullErrorMessage}\n\nVerifique as credenciais Pluggy na Vercel ou recrie a conexão.`)
+        
+        // Não fazer refresh para evitar loop
+        return
       }
 
       const result = await response.json()
       
-      // Mostrar resultado
+      // Mostrar resultado apenas se for sucesso
       if (result.ok) {
         const message = 
           `Sincronização concluída:\n` +
@@ -209,16 +230,32 @@ export function ConnectionsWizardClient({
           `- Contas inseridas/atualizadas: ${result.accountsUpserted || 0}\n` +
           `- Transações inseridas/atualizadas: ${result.transactionsUpserted || 0}`
         alert(message)
+        
+        // Só fazer refresh em caso de sucesso
+        router.refresh()
       } else {
-        throw new Error(result.message || 'Erro desconhecido ao sincronizar')
+        const errorMessage = result.message || 'Erro desconhecido ao sincronizar'
+        console.error('[connections] Sync failed:', {
+          connectionId,
+          result,
+        })
+        alert(`Erro ao sincronizar:\n\n${errorMessage}`)
+        // Não fazer refresh para evitar loop
       }
-
-      router.refresh()
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Erro ao sincronizar"
-      alert(errorMessage)
-      console.error('[connections] Sync error:', error)
+      console.error('[connections] Sync error:', {
+        connectionId,
+        error: errorMessage,
+        errorObject: error,
+      })
+      
+      // Mostrar erro sem causar loop
+      alert(`Erro ao sincronizar:\n\n${errorMessage}\n\nVerifique as credenciais Pluggy na Vercel ou recrie a conexão.`)
+      
+      // Não fazer refresh para evitar loop
     } finally {
+      // Sempre limpar o estado de loading, mesmo em caso de erro
       setSyncingId(null)
     }
   }
