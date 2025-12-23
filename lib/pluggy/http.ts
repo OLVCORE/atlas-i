@@ -22,9 +22,35 @@ export async function pluggyFetch(
   path: string,
   options: RequestInit = {}
 ): Promise<Response> {
-  const apiKey = await getPluggyApiKey()
+  console.log(`[pluggy:http] Iniciando requisição para ${path}`, {
+    method: options.method || 'GET',
+    hasBody: !!options.body,
+    bodyLength: options.body ? String(options.body).length : 0,
+  })
+
+  let apiKey: string
+  try {
+    apiKey = await getPluggyApiKey()
+    console.log(`[pluggy:http] API key obtido com sucesso`, {
+      apiKeyLength: apiKey?.length,
+      apiKeyPrefix: apiKey?.substring(0, 8),
+      path,
+    })
+  } catch (authError: any) {
+    console.error(`[pluggy:http] Erro ao obter API key para ${path}:`, {
+      error: authError?.message,
+      stack: authError?.stack,
+      path,
+    })
+    throw authError
+  }
 
   const url = path.startsWith('https://') ? path : `https://api.pluggy.ai${path}`
+
+  console.log(`[pluggy:http] Fazendo requisição para ${url}`, {
+    method: options.method || 'GET',
+    path,
+  })
 
   const response = await fetch(url, {
     ...options,
@@ -34,6 +60,13 @@ export async function pluggyFetch(
       'Content-Type': 'application/json',
       ...options.headers,
     },
+  })
+
+  console.log(`[pluggy:http] Resposta recebida para ${path}:`, {
+    status: response.status,
+    statusText: response.statusText,
+    ok: response.ok,
+    headers: Object.fromEntries(response.headers.entries()),
   })
 
   if (!response.ok) {
@@ -54,8 +87,13 @@ export async function pluggyFetch(
       status: response.status,
       statusText: response.statusText,
       path,
+      url,
+      method: options.method || 'GET',
       errorDetails,
+      errorText: errorText.substring(0, 500),
       headers: Object.fromEntries(response.headers.entries()),
+      apiKeyLength: apiKey?.length,
+      apiKeyPrefix: apiKey?.substring(0, 8),
     })
     
     // Se for 403, pode ser:
@@ -69,12 +107,15 @@ export async function pluggyFetch(
       clearPluggyApiKeyCache()
       console.warn('[pluggy:http] Cache de API key limpo devido a erro 403', {
         path,
+        url,
+        method: options.method || 'GET',
         errorDetails,
         possibleCauses: [
           'API key inválido ou expirado',
           'Item não pertence à conta Pluggy configurada',
           'Item foi revogado ou expirado',
           'Conta em trial com limitações',
+          'Credenciais PLUGGY_CLIENT_ID/PLUGGY_CLIENT_SECRET incorretas',
         ],
       })
     }
