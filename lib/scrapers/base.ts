@@ -92,6 +92,33 @@ export abstract class BaseScraper {
   protected abstract extractTransactions(): Promise<ScrapingResult['transactions']>
 
   /**
+   * Testa login (sem fazer scraping completo)
+   */
+  async testLogin(): Promise<boolean> {
+    try {
+      await this.initBrowser()
+      await this.login()
+      
+      // Se chegou aqui sem erro, login foi bem-sucedido
+      // Verificar se realmente está logado (não está mais na página de login)
+      if (this.page) {
+        const currentUrl = this.page.url()
+        // Se ainda está na página de login, falhou
+        if (currentUrl.includes('login') || currentUrl.includes('acesse-sua-conta')) {
+          return false
+        }
+      }
+      
+      return true
+    } catch (error) {
+      console.error('[testLogin] Erro:', error)
+      return false
+    } finally {
+      await this.closeBrowser()
+    }
+  }
+
+  /**
    * Método principal: executa scraping completo
    */
   async scrape(options?: {
