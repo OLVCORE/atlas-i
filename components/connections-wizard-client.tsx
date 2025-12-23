@@ -22,6 +22,8 @@ import { PluggyConnectButton } from "@/components/pluggy/PluggyConnectButton"
 type Entity = {
   id: string
   legal_name: string
+  type: string
+  document: string
 }
 
 type ProviderCatalog = {
@@ -50,6 +52,9 @@ type Connection = {
   last_sync_at: string | null
   last_error: string | null
   created_at: string
+  entity_legal_name?: string
+  entity_type?: string
+  entity_document?: string
 }
 
 type AuditLog = {
@@ -108,6 +113,9 @@ export function ConnectionsWizardClient({
 
   // Filtro de auditoria
   const [auditFilter, setAuditFilter] = useState<string>("")
+  
+  // Estado para seleção de entidade antes de conectar via Pluggy
+  const [selectedEntityForPluggy, setSelectedEntityForPluggy] = useState<string>("")
 
   const handleValidateEnv = async () => {
     setValidatingEnv(true)
@@ -143,6 +151,32 @@ export function ConnectionsWizardClient({
     }
   }
 
+  const handleRevokeConnection = async (connectionId: string) => {
+    if (!confirm("Tem certeza que deseja revogar esta conexão? A conexão será desativada e não poderá mais ser sincronizada.")) {
+      return
+    }
+    
+    try {
+      const response = await fetch(`/api/connections/${connectionId}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        const errorMessage = errorData.error || errorData.message || `Erro ${response.status}`
+        const details = errorData.details ? `: ${errorData.details}` : ''
+        throw new Error(`${errorMessage}${details}`)
+      }
+
+      alert("Conexão revogada com sucesso")
+      router.refresh()
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Erro ao revogar conexão"
+      alert(errorMessage)
+      console.error('[connections] Revoke error:', error)
+    }
+  }
+
   const handleSync = async (connectionId: string) => {
     const connection = connections.find((c) => c.id === connectionId)
     if (connection?.status !== 'active') {
@@ -152,10 +186,38 @@ export function ConnectionsWizardClient({
     
     setSyncingId(connectionId)
     try {
-      await syncConnectionAction(connectionId)
+      const response = await fetch('/api/pluggy/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connectionId }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        const errorMessage = errorData.error || errorData.message || `Erro ${response.status}`
+        const details = errorData.details ? `: ${errorData.details}` : ''
+        throw new Error(`${errorMessage}${details}`)
+      }
+
+      const result = await response.json()
+      
+      // Mostrar resultado
+      if (result.ok) {
+        const message = 
+          `Sincronização concluída:\n` +
+          `- Contas processadas: ${result.accountsProcessed || 0}\n` +
+          `- Contas inseridas/atualizadas: ${result.accountsUpserted || 0}\n` +
+          `- Transações inseridas/atualizadas: ${result.transactionsUpserted || 0}`
+        alert(message)
+      } else {
+        throw new Error(result.message || 'Erro desconhecido ao sincronizar')
+      }
+
       router.refresh()
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Erro ao sincronizar")
+      const errorMessage = error instanceof Error ? error.message : "Erro ao sincronizar"
+      alert(errorMessage)
+      console.error('[connections] Sync error:', error)
     } finally {
       setSyncingId(null)
     }
@@ -470,20 +532,50 @@ export function ConnectionsWizardClient({
                 </TableBody>
               </Table>
 
-              <div className="flex justify-between items-center">
-                <h3 className="text-lg font-semibold">Conexões</h3>
-                <div className="flex gap-2">
-                  <PluggyConnectButton
-                    disabled={!providers.some(p => p.catalog_code === 'pluggy' && p.status === 'active')}
-                    entityId={entities.length > 0 ? entities[0].id : undefined}
-                  />
-                  <Button onClick={() => {
-                    setStep(3)
-                    setConnectionEntityId("")
-                    setConnectionProviderId("")
-                  }} variant="outline">
-                    Nova Conexão Manual
-                  </Button>
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-lg font-semibold">Conexões</h3>
+                </div>
+                
+                <div className="flex gap-4 items-end">
+                  <div className="flex-1 space-y-2">
+                    <Label htmlFor="pluggy-entity-select">Entidade para conectar via Pluggy</Label>
+                    <select
+                      id="pluggy-entity-select"
+                      value={selectedEntityForPluggy}
+                      onChange={(e) => setSelectedEntityForPluggy(e.target.value)}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    >
+                      <option value="">Selecione uma entidade</option>
+                      {entities.map((entity) => (
+                        <option key={entity.id} value={entity.id}>
+                          {entity.legal_name} ({entity.type}) - {entity.document}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex gap-2">
+                    {entities.length > 0 ? (
+                      <PluggyConnectButton
+                        disabled={
+                          !providers.some(p => p.catalog_code === 'pluggy' && p.status === 'active') ||
+                          !selectedEntityForPluggy
+                        }
+                        entityId={selectedEntityForPluggy || undefined}
+                      />
+                    ) : (
+                      <Button disabled variant="outline">
+                        Crie uma entidade primeiro
+                      </Button>
+                    )}
+                    <Button onClick={() => {
+                      setStep(3)
+                      setConnectionEntityId("")
+                      setConnectionProviderId("")
+                    }} variant="outline">
+                      Nova Conexão Manual
+                    </Button>
+                  </div>
                 </div>
               </div>
 
@@ -504,11 +596,28 @@ export function ConnectionsWizardClient({
                   </TableHeader>
                   <TableBody>
                     {connections.map((conn) => {
-                      const entity = entities.find((e) => e.id === conn.entity_id)
                       const provider = providers.find((p) => p.id === conn.provider_id)
+                      const entity = entities.find((e) => e.id === conn.entity_id)
+                      const entityName = conn.entity_legal_name || entity?.legal_name || "N/A"
+                      const entityType = conn.entity_type || entity?.type || "N/A"
+                      const entityDocument = conn.entity_document || entity?.document || ""
+                      // Formatar documento: CPF (11) ou CNPJ (14)
+                      let documentDisplay = ""
+                      if (entityDocument) {
+                        if (entityDocument.length === 11) {
+                          // CPF: 123.456.789-00
+                          documentDisplay = ` - ${entityDocument.substring(0, 3)}.${entityDocument.substring(3, 6)}.${entityDocument.substring(6, 9)}-${entityDocument.substring(9)}`
+                        } else if (entityDocument.length === 14) {
+                          // CNPJ: 12.345.678/0001-90
+                          documentDisplay = ` - ${entityDocument.substring(0, 2)}.${entityDocument.substring(2, 5)}.${entityDocument.substring(5, 8)}/${entityDocument.substring(8, 12)}-${entityDocument.substring(12)}`
+                        } else {
+                          documentDisplay = ` - ${entityDocument}`
+                        }
+                      }
+                      const entityDisplayName = `${entityName} (${entityType})${documentDisplay}`
                       return (
                         <TableRow key={conn.id}>
-                          <TableCell>{entity?.legal_name || "N/A"}</TableCell>
+                          <TableCell>{entityDisplayName}</TableCell>
                           <TableCell>{provider?.catalog_name || provider?.name || "N/A"}</TableCell>
                           <TableCell>
                             <span className={getStatusColor(conn.status)}>
@@ -521,22 +630,34 @@ export function ConnectionsWizardClient({
                               : "Nunca"}
                           </TableCell>
                           <TableCell>
-                            {conn.status === 'active' ? (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleSync(conn.id)}
-                                disabled={syncingId === conn.id}
-                              >
-                                {syncingId === conn.id ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  "Sincronizar agora"
-                                )}
-                              </Button>
-                            ) : (
-                              <span className="text-sm text-muted-foreground">Ative para sincronizar</span>
-                            )}
+                            <div className="flex gap-2 items-center">
+                              {conn.status === 'active' ? (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleSync(conn.id)}
+                                    disabled={syncingId === conn.id}
+                                  >
+                                    {syncingId === conn.id ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      "Sincronizar agora"
+                                    )}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() => handleRevokeConnection(conn.id)}
+                                    title="Revogar conexão"
+                                  >
+                                    Revogar
+                                  </Button>
+                                </>
+                              ) : (
+                                <span className="text-sm text-muted-foreground">Ative para sincronizar</span>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       )
