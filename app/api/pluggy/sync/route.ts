@@ -80,6 +80,22 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Detectar erro de limitação de trial PRIMEIRO (antes de outros 403)
+    if (errorMessage.includes('pluggy_trial_limit') || 
+        errorMessage.toLowerCase().includes('trial') && errorMessage.toLowerCase().includes('limit')) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "trial_limit",
+          message: "A conta Pluggy está em modo trial e atingiu limitações",
+          details: errorMessage,
+          isTrialLimit: true,
+          solution: "Fazer upgrade para conta paga do Pluggy em https://www.pluggy.ai/pricing",
+        },
+        { status: 500 }
+      )
+    }
+    
     // Detectar erro 403 da API Pluggy (autenticação falhou)
     if (errorMessage.includes('403') || errorMessage.includes('Forbidden') || errorMessage.includes('pluggy_auth_error')) {
       return NextResponse.json(
@@ -104,11 +120,24 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Verificar se é erro de limitação de trial (fallback)
+    const isTrialLimit = errorMessage.toLowerCase().includes('trial') && 
+                         (errorMessage.toLowerCase().includes('limit') || 
+                          errorMessage.toLowerCase().includes('quota') ||
+                          errorMessage.toLowerCase().includes('exceeded'))
+    
     return NextResponse.json(
       {
-        error: "internal_error",
-        message: "Erro ao sincronizar dados do Pluggy",
+        ok: false,
+        error: isTrialLimit ? "trial_limit" : "internal_error",
+        message: isTrialLimit 
+          ? "A conta Pluggy está em modo trial e atingiu limitações"
+          : "Erro ao sincronizar dados do Pluggy",
         details: errorMessage,
+        isTrialLimit,
+        solution: isTrialLimit 
+          ? "Fazer upgrade para conta paga do Pluggy em https://www.pluggy.ai/pricing"
+          : undefined,
       },
       { status: 500 }
     )
