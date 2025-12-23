@@ -45,10 +45,24 @@ export type ImportResult = {
 
 /**
  * Gera external_id único para uma transação importada
- * Baseado em: data + descrição + valor + entity_id
+ * Baseado em: data + descrição normalizada + valor + entity_id + account_id
+ * 
+ * IMPORTANTE: Parcelas diferentes (ex: "Parcela 3/10" vs "Parcela 4/10") 
+ * terão external_ids diferentes, permitindo múltiplas importações da mesma compra.
  */
-function generateExternalId(row: ParsedRow, entityId: string): string {
-  const hash = `${row.date}|${row.description.trim()}|${row.amount}|${row.type}`
+function generateExternalId(
+  row: ParsedRow, 
+  entityId: string, 
+  accountId: string | null
+): string {
+  // Normalizar descrição (remover espaços extras, mas manter diferenças de parcelas)
+  const normalizedDesc = row.description.trim().replace(/\s+/g, ' ')
+  
+  // Incluir account_id no hash para diferenciar transações da mesma descrição em contas diferentes
+  const accountPart = accountId ? `_${accountId.substring(0, 8)}` : ''
+  
+  const hash = `${row.date}|${normalizedDesc}|${row.amount}|${row.type}${accountPart}`
+  
   // Usar hash simples (em produção, poderia usar crypto)
   const hashValue = hash.split('').reduce((acc, char) => {
     const charCode = char.charCodeAt(0)
@@ -60,15 +74,24 @@ function generateExternalId(row: ParsedRow, entityId: string): string {
 
 /**
  * Verifica se transação já existe (idempotência)
+ * 
+ * Estratégia de detecção de duplicatas:
+ * 1. Por external_id (mais preciso - mesma data + descrição + valor + conta)
+ * 2. Por matching fuzzy (data próxima + valor igual + descrição similar) - fallback
  */
 async function transactionExists(
   entityId: string,
-  externalId: string
-): Promise<boolean> {
+  externalId: string,
+  date: string,
+  amount: number,
+  description: string,
+  accountId: string | null
+): Promise<{ exists: boolean; transactionId?: string; matchType?: 'exact' | 'fuzzy' }> {
   const supabase = await createClient()
   const workspace = await getActiveWorkspace()
   
-  const { data, error } = await supabase
+  // 1. Verificar por external_id (match exato)
+  const { data: exactMatch, error: exactError } = await supabase
     .from("transactions")
     .select("id")
     .eq("workspace_id", workspace.id)
@@ -78,12 +101,96 @@ async function transactionExists(
     .limit(1)
     .maybeSingle()
   
-  if (error) {
-    console.error('[import] Erro ao verificar transação existente:', error)
-    return false
+  if (exactError) {
+    console.error('[import] Erro ao verificar transação existente:', exactError)
+    return { exists: false }
   }
   
-  return data !== null
+  if (exactMatch) {
+    return { exists: true, transactionId: exactMatch.id, matchType: 'exact' }
+  }
+  
+  // 2. Verificar por matching fuzzy (data próxima + valor igual + descrição similar)
+  // Isso evita duplicatas quando a descrição muda ligeiramente mas é a mesma transação
+  const dateObj = new Date(date)
+  const dateStart = new Date(dateObj)
+  dateStart.setDate(dateStart.getDate() - 1) // 1 dia antes
+  const dateEnd = new Date(dateObj)
+  dateEnd.setDate(dateEnd.getDate() + 1) // 1 dia depois
+  
+  const amountTolerance = 0.01 // 1 centavo de tolerância
+  
+  const { data: fuzzyMatches, error: fuzzyError } = await supabase
+    .from("transactions")
+    .select("id, date, amount, description")
+    .eq("workspace_id", workspace.id)
+    .eq("entity_id", entityId)
+    .eq("source", "csv")
+    .gte("date", dateStart.toISOString().split('T')[0])
+    .lte("date", dateEnd.toISOString().split('T')[0])
+    .eq("account_id", accountId) // Mesma conta
+    .limit(10)
+  
+  if (fuzzyError) {
+    console.error('[import] Erro ao verificar matches fuzzy:', fuzzyError)
+    return { exists: false }
+  }
+  
+  // Verificar se algum match fuzzy tem valor igual e descrição similar
+  if (fuzzyMatches) {
+    for (const match of fuzzyMatches) {
+      const matchAmount = Math.abs(Number(match.amount))
+      const rowAmount = Math.abs(amount)
+      
+      // Valor igual (com tolerância)
+      if (Math.abs(matchAmount - rowAmount) <= amountTolerance) {
+        // Descrição similar (normalizar e comparar)
+        const matchDesc = (match.description || '').trim().toLowerCase()
+        const rowDesc = description.trim().toLowerCase()
+        
+        // Se descrições são idênticas ou muito similares (>80% de similaridade)
+        if (matchDesc === rowDesc || calculateSimilarity(matchDesc, rowDesc) > 0.8) {
+          return { exists: true, transactionId: match.id, matchType: 'fuzzy' }
+        }
+      }
+    }
+  }
+  
+  return { exists: false }
+}
+
+/**
+ * Calcula similaridade simples entre duas strings (0-1)
+ */
+function calculateSimilarity(str1: string, str2: string): number {
+  if (str1 === str2) return 1.0
+  
+  // Normalizar: remover acentos, espaços extras, caracteres especiais
+  const normalize = (s: string) => s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+  
+  const n1 = normalize(str1)
+  const n2 = normalize(str2)
+  
+  if (n1 === n2) return 0.95
+  
+  // Calcular similaridade por caracteres comuns
+  const longer = n1.length > n2.length ? n1 : n2
+  const shorter = n1.length > n2.length ? n2 : n1
+  
+  if (longer.length === 0) return 1.0
+  
+  let matches = 0
+  for (let i = 0; i < shorter.length; i++) {
+    if (longer.includes(shorter[i])) {
+      matches++
+    }
+  }
+  
+  return matches / longer.length
 }
 
 /**
@@ -227,13 +334,29 @@ export async function importSpreadsheet(
     }> = []
     
     for (const row of parseResult.rows) {
-      const externalId = generateExternalId(row, options.entityId)
+      const externalId = generateExternalId(row, options.entityId, accountId)
       
       // Verificar duplicata se solicitado
       if (options.skipDuplicates) {
-        const exists = await transactionExists(options.entityId, externalId)
-        if (exists) {
+        const amount = row.type === 'expense' ? -Math.abs(row.amount) : Math.abs(row.amount)
+        const duplicateCheck = await transactionExists(
+          options.entityId,
+          externalId,
+          row.date,
+          amount,
+          row.description,
+          accountId
+        )
+        
+        if (duplicateCheck.exists) {
           result.skipped.duplicates++
+          
+          // Adicionar aviso se foi match fuzzy (pode indicar descrição ligeiramente diferente)
+          if (duplicateCheck.matchType === 'fuzzy') {
+            result.warnings.push({
+              message: `Linha pulada (duplicata detectada por similaridade): ${row.description.substring(0, 50)}...`,
+            })
+          }
           continue
         }
       }
