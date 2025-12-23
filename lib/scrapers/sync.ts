@@ -85,7 +85,7 @@ export async function syncScraperConnection(
         transactions_found: scrapingResult.transactions.length,
         transactions_imported: importResult.imported.transactions,
         transactions_skipped: importResult.skipped.duplicates,
-        reconciliations: importResult.imported.cardInstallments || 0,
+        reconciliations: 0, // TODO: Adicionar cardInstallments ao ImportResult quando implementado
         error_message: importResult.errors.length > 0 ? importResult.errors[0].message : null,
         duration_ms: Date.now() - startTime,
         metadata: {
