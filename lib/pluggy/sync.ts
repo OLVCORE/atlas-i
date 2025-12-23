@@ -135,9 +135,11 @@ export async function syncPluggyConnection(connectionId: string): Promise<{
 
   try {
     // 1. Verificar se o item existe e pertence à conta antes de buscar accounts
-    console.log(`[pluggy:sync] Verificando item ${itemId} antes de buscar accounts`)
+    console.log(`[pluggy:sync] Iniciando sync para itemId: ${itemId}, entityId: ${entityId}, workspaceId: ${workspace.id}`)
     
+    // Tentar verificar o item primeiro (pode falhar se não tiver permissão)
     try {
+      console.log(`[pluggy:sync] Verificando item ${itemId} antes de buscar accounts`)
       const itemResponse = await pluggyFetch(`/items/${itemId}`, {
         method: 'GET',
       })
@@ -149,11 +151,25 @@ export async function syncPluggyConnection(connectionId: string): Promise<{
           status: itemData.status,
           connector: itemData.connector?.name,
           createdAt: itemData.createdAt,
+          error: itemData.error,
         })
+      } else {
+        console.warn(`[pluggy:sync] Item ${itemId} retornou status ${itemResponse.status}`)
       }
-    } catch (itemError) {
-      console.error(`[pluggy:sync] Erro ao verificar item ${itemId}:`, itemError)
-      // Continuar mesmo se falhar, pode ser que o endpoint /items/{id} não exista
+    } catch (itemError: any) {
+      const errorMsg = itemError instanceof Error ? itemError.message : String(itemError)
+      console.error(`[pluggy:sync] Erro ao verificar item ${itemId}:`, {
+        error: errorMsg,
+        // Se for 403, o item não pertence à conta
+        is403: errorMsg.includes('403'),
+      })
+      
+      // Se for 403, lançar erro mais descritivo
+      if (errorMsg.includes('403')) {
+        throw new Error(`pluggy_item_access_error: O item ${itemId} não pertence à conta Pluggy configurada ou foi revogado. Verifique se o item foi criado com as mesmas credenciais (PLUGGY_CLIENT_ID e PLUGGY_CLIENT_SECRET) que estão configuradas na Vercel. Você pode precisar recriar a conexão.`)
+      }
+      
+      // Continuar para outras requisições se não for 403
     }
     
     // 2. Buscar accounts do Pluggy usando o endpoint correto
