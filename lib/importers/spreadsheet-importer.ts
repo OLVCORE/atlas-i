@@ -440,7 +440,7 @@ export async function importSpreadsheet(
           row.date,
           amount,
           row.description,
-          accountId
+          accountId || null
         )
         
         if (duplicateCheck.exists) {
