@@ -47,11 +47,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Criar instância do scraper e testar conexão
+    // Criar instância do scraper e testar conexão REAL
     try {
-      // TODO: Quando os scrapers estiverem completos, usar:
-      // const scraper = createScraper(bankCode, testCredentials)
-      // await scraper.testConnection()
+      const { createScraper } = await import('@/lib/scrapers/factory')
       
       // Criar credenciais temporárias apenas para teste
       const testCredentials = {
@@ -61,39 +59,49 @@ export async function POST(request: NextRequest) {
         twoFactorSecret: twoFactorSecret || undefined,
       }
 
-      // Tentar fazer login (apenas testar, não fazer scraping completo)
-      // Por enquanto, retornamos sucesso se não houver erro de validação
-      // TODO: Implementar teste real de conexão quando o scraper estiver completo
+      // Criar scraper e testar login REAL
+      const scraper = createScraper(bankCode, testCredentials)
       
-      // Por enquanto, apenas validamos que as credenciais não estão vazias
-      if (password.length < 4) {
+      // Testar login (faz login real no banco)
+      const loginSuccess = await scraper.testLogin()
+      
+      if (loginSuccess) {
+        return NextResponse.json({
+          ok: true,
+          connectionTest: {
+            success: true,
+            message: "✅ Login realizado com sucesso! As credenciais estão corretas.",
+          },
+        })
+      } else {
         return NextResponse.json({
           ok: false,
           connectionTest: {
             success: false,
-            message: "Senha muito curta. Verifique se digitou corretamente.",
+            message: "❌ Falha ao fazer login. Verifique se o CPF/CNPJ e senha estão corretos.",
           },
         })
       }
 
-      // Simular teste (em produção, aqui faríamos login real)
-      // Por enquanto, retornamos "sucesso" se passou nas validações básicas
-      // O usuário ainda precisa testar manualmente na primeira sincronização
-      
-      return NextResponse.json({
-        ok: true,
-        connectionTest: {
-          success: true,
-          message: "Credenciais validadas. Nota: Teste completo será feito na primeira sincronização.",
-        },
-      })
-
     } catch (testError: any) {
+      const errorMessage = testError?.message || "Erro desconhecido ao testar conexão"
+      
+      // Erros comuns do Itaú
+      if (errorMessage.includes('Falha no login') || errorMessage.includes('ainda na página de login')) {
+        return NextResponse.json({
+          ok: false,
+          connectionTest: {
+            success: false,
+            message: "❌ Credenciais inválidas. Verifique CPF/CNPJ e senha.",
+          },
+        })
+      }
+      
       return NextResponse.json({
         ok: false,
         connectionTest: {
           success: false,
-          message: testError?.message || "Erro ao testar conexão",
+          message: `❌ Erro ao testar conexão: ${errorMessage}`,
         },
       })
     }
