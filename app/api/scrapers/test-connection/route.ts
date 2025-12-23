@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import type { BankCode } from "@/lib/scrapers/types"
+import type { BankCode, ScraperCredentials } from "@/lib/scrapers/types"
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,17 +26,47 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const {
       bankCode,
+      // Novos campos
+      cpf,
+      cnpj,
+      agency,
+      accountNumber,
+      accountDigit,
+      // Campos antigos (compatibilidade)
       username,
       password,
       twoFactorSecret,
     } = body
 
-    // Validações
-    if (!bankCode || !username || !password) {
+    // Validações básicas
+    if (!bankCode || !password) {
       return NextResponse.json(
-        { error: "bankCode, username e password são obrigatórios" },
+        { error: "bankCode e password são obrigatórios" },
         { status: 400 }
       )
+    }
+
+    // Validações específicas
+    if (bankCode === 'itau') {
+      if (!cpf && !cnpj) {
+        return NextResponse.json(
+          { error: "CPF ou CNPJ é obrigatório para Itaú" },
+          { status: 400 }
+        )
+      }
+      if (cpf && (!agency || !accountNumber || !accountDigit)) {
+        return NextResponse.json(
+          { error: "Agência, número e dígito da conta são obrigatórios para Itaú PF" },
+          { status: 400 }
+        )
+      }
+    } else {
+      if (!cpf && !cnpj && !username) {
+        return NextResponse.json(
+          { error: "CPF, CNPJ ou username é obrigatório" },
+          { status: 400 }
+        )
+      }
     }
 
     const validBankCodes: BankCode[] = ['itau', 'santander', 'btg', 'mercadopago']
@@ -52,11 +82,18 @@ export async function POST(request: NextRequest) {
       const { createScraper } = await import('@/lib/scrapers/factory')
       
       // Criar credenciais temporárias apenas para teste
-      const testCredentials = {
-        username,
+      const testCredentials: ScraperCredentials = {
         password,
         entityId: '', // Não precisa para teste
         twoFactorSecret: twoFactorSecret || undefined,
+        // Novos campos
+        cpf: cpf || undefined,
+        cnpj: cnpj || undefined,
+        agency: agency || undefined,
+        accountNumber: accountNumber || undefined,
+        accountDigit: accountDigit || undefined,
+        // Campo antigo (compatibilidade)
+        username: username || undefined,
       }
 
       // Criar scraper e testar login REAL

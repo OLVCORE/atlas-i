@@ -19,11 +19,23 @@ export type BankConfig = {
 }
 
 export type ScraperCredentials = {
-  username: string // CPF/CNPJ ou email
+  // Identificação do usuário (depende do banco)
+  username?: string // CPF/CNPJ ou email (quando aplicável)
+  cpf?: string // CPF (11 dígitos)
+  cnpj?: string // CNPJ (14 dígitos)
+  
+  // Dados de conta bancária (OBRIGATÓRIO para Itaú PF)
+  agency?: string // Agência (ex: "1234")
+  accountNumber?: string // Número da conta (ex: "56789-0")
+  accountDigit?: string // Dígito da conta (ex: "0")
+  
+  // Autenticação
   password: string // Senha (criptografada)
   twoFactorSecret?: string // Para 2FA (criptografado)
+  
+  // Vinculação
   entityId: string // Entidade vinculada
-  accountId?: string // Conta vinculada (opcional)
+  accountId?: string // Conta interna vinculada (opcional)
 }
 
 export type ScraperConnection = {

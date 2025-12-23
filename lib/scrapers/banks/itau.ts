@@ -34,36 +34,66 @@ export class ItauScraper extends BaseScraper {
       const loginSelector = 'input[name="agencia"], input[name="conta"], input[type="text"][placeholder*="CPF"], input[type="text"][placeholder*="CNPJ"]'
       await this.waitForSelector(loginSelector, 10000)
 
-      // Preencher credenciais
-      const username = this.credentials.username
-      const password = this.credentials.password
+      // Preencher credenciais (usar novos campos)
+      const { cpf, cnpj, agency, accountNumber, accountDigit, password } = this.credentials
 
-      // Detectar se é CPF ou CNPJ (11 ou 14 dígitos)
-      const isCNPJ = username.replace(/\D/g, '').length === 14
-      
-      if (isCNPJ) {
-        // Login PJ: CNPJ
-        const cnpjInput = await this.page.$('input[name="cnpj"], input[placeholder*="CNPJ"]')
+      // Login PJ: CNPJ
+      if (cnpj) {
+        const cnpjInput = await this.page.$('input[name="cnpj"], input[placeholder*="CNPJ"], input[id*="cnpj"], input[id*="CNPJ"]')
         if (cnpjInput) {
-          await cnpjInput.type(username.replace(/\D/g, ''), { delay: 100 })
+          await cnpjInput.type(cnpj.replace(/\D/g, ''), { delay: 100 })
+        } else {
+          throw new Error('Campo CNPJ não encontrado na página de login')
+        }
+      } 
+      // Login PF: CPF + Agência + Conta + Dígito
+      else if (cpf && agency && accountNumber && accountDigit) {
+        // Preencher CPF
+        const cpfInput = await this.page.$('input[name="cpf"], input[placeholder*="CPF"], input[id*="cpf"], input[id*="CPF"]')
+        if (cpfInput) {
+          await cpfInput.type(cpf.replace(/\D/g, ''), { delay: 100 })
+        } else {
+          throw new Error('Campo CPF não encontrado na página de login')
+        }
+
+        // Aguardar próxima etapa (pode abrir campos de agência/conta)
+        await this.page.waitForTimeout(1000)
+
+        // Preencher Agência
+        const agenciaInput = await this.page.$('input[name="agencia"], input[placeholder*="agência"], input[placeholder*="Agencia"], input[id*="agencia"], input[id*="Agencia"]')
+        if (agenciaInput) {
+          await agenciaInput.type(agency.replace(/\D/g, ''), { delay: 100 })
+        } else {
+          throw new Error('Campo Agência não encontrado na página de login')
+        }
+
+        // Preencher Conta (número + dígito)
+        const contaInput = await this.page.$('input[name="conta"], input[placeholder*="conta"], input[id*="conta"], input[id*="Conta"]')
+        if (contaInput) {
+          const contaCompleta = `${accountNumber.replace(/\D/g, '')}-${accountDigit.replace(/\D/g, '')}`
+          await contaInput.type(contaCompleta, { delay: 100 })
+        } else {
+          throw new Error('Campo Conta não encontrado na página de login')
+        }
+      } 
+      // Fallback: tentar usar username (compatibilidade)
+      else if (this.credentials.username) {
+        const username = this.credentials.username
+        const isCNPJ = username.replace(/\D/g, '').length === 14
+        
+        if (isCNPJ) {
+          const cnpjInput = await this.page.$('input[name="cnpj"], input[placeholder*="CNPJ"]')
+          if (cnpjInput) {
+            await cnpjInput.type(username.replace(/\D/g, ''), { delay: 100 })
+          }
+        } else {
+          const cpfInput = await this.page.$('input[name="cpf"], input[placeholder*="CPF"]')
+          if (cpfInput) {
+            await cpfInput.type(username.replace(/\D/g, ''), { delay: 100 })
+          }
         }
       } else {
-        // Login PF: Agência + Conta ou CPF
-        const agenciaInput = await this.page.$('input[name="agencia"]')
-        const contaInput = await this.page.$('input[name="conta"]')
-        const cpfInput = await this.page.$('input[name="cpf"], input[placeholder*="CPF"]')
-
-        if (agenciaInput && contaInput) {
-          // Login com agência/conta
-          const parts = username.split('/')
-          if (parts.length === 2) {
-            await agenciaInput.type(parts[0].trim(), { delay: 100 })
-            await contaInput.type(parts[1].trim(), { delay: 100 })
-          }
-        } else if (cpfInput) {
-          // Login com CPF
-          await cpfInput.type(username.replace(/\D/g, ''), { delay: 100 })
-        }
+        throw new Error('Credenciais incompletas: é necessário CPF+Agência+Conta+Dígito (PF) ou CNPJ (PJ)')
       }
 
       // Preencher senha

@@ -25,6 +25,13 @@ export async function POST(request: NextRequest) {
     const {
       bankCode,
       entityId,
+      // Novos campos
+      cpf,
+      cnpj,
+      agency,
+      accountNumber,
+      accountDigit,
+      // Campos antigos (para compatibilidade)
       username,
       password,
       twoFactorSecret,
@@ -33,10 +40,10 @@ export async function POST(request: NextRequest) {
       scheduleTime,
     } = body
 
-    // Validações
-    if (!bankCode || !entityId || !username || !password) {
+    // Validações básicas
+    if (!bankCode || !entityId || !password) {
       return NextResponse.json(
-        { error: "bankCode, entityId, username e password são obrigatórios" },
+        { error: "bankCode, entityId e password são obrigatórios" },
         { status: 400 }
       )
     }
@@ -49,13 +56,46 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Validações específicas por banco
+    if (bankCode === 'itau') {
+      // Itaú precisa de CPF ou CNPJ
+      if (!cpf && !cnpj) {
+        return NextResponse.json(
+          { error: "CPF ou CNPJ é obrigatório para Itaú" },
+          { status: 400 }
+        )
+      }
+      // Se tem CPF, precisa de agência e conta (PF)
+      if (cpf && (!agency || !accountNumber || !accountDigit)) {
+        return NextResponse.json(
+          { error: "Agência, número e dígito da conta são obrigatórios para Itaú PF" },
+          { status: 400 }
+        )
+      }
+    } else {
+      // Outros bancos: CPF ou CNPJ
+      if (!cpf && !cnpj && !username) {
+        return NextResponse.json(
+          { error: "CPF, CNPJ ou username é obrigatório" },
+          { status: 400 }
+        )
+      }
+    }
+
     // Preparar credenciais
     const credentials: ScraperCredentials = {
-      username,
       password,
       entityId,
       accountId: accountId || undefined,
       twoFactorSecret: twoFactorSecret || undefined,
+      // Novos campos
+      cpf: cpf || undefined,
+      cnpj: cnpj || undefined,
+      agency: agency || undefined,
+      accountNumber: accountNumber || undefined,
+      accountDigit: accountDigit || undefined,
+      // Campo antigo (compatibilidade)
+      username: username || undefined,
     }
 
     // Criar conexão

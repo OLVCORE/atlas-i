@@ -45,9 +45,17 @@ export function ScrapersManager({
   const [formData, setFormData] = useState({
     bankCode: '' as BankCode | '',
     entityId: '',
-    username: '',
+    // Identificação
+    cpf: '',
+    cnpj: '',
+    // Dados bancários (OBRIGATÓRIO para Itaú PF)
+    agency: '',
+    accountNumber: '',
+    accountDigit: '',
+    // Autenticação
     password: '', // NUNCA será renderizado diretamente no DOM
     twoFactorSecret: '',
+    // Vinculação
     accountId: '',
     scheduleFrequency: 'daily' as 'daily' | 'weekly' | 'monthly',
     scheduleTime: '06:00',
@@ -80,8 +88,51 @@ export function ScrapersManager({
   }
 
   const handleTestConnection = async () => {
-    if (!formData.bankCode || !formData.entityId || !formData.username || !passwordInput) {
-      alert('Preencha todos os campos obrigatórios antes de testar')
+    // Validar campos obrigatórios baseado no banco e tipo de entidade
+    const selectedEntity = entities.find(e => e.id === formData.entityId)
+    const isPF = selectedEntity?.type === 'PF'
+    const isItau = formData.bankCode === 'itau'
+    
+    let isValid = true
+    let errorMessage = ''
+    
+    if (!formData.bankCode || !formData.entityId || !passwordInput) {
+      isValid = false
+      errorMessage = 'Preencha todos os campos obrigatórios'
+    } else if (isItau && isPF) {
+      // Itaú PF: precisa CPF + Agência + Conta + Dígito
+      if (!formData.cpf || formData.cpf.length !== 11) {
+        isValid = false
+        errorMessage = 'CPF deve ter 11 dígitos'
+      } else if (!formData.agency || formData.agency.length !== 4) {
+        isValid = false
+        errorMessage = 'Agência deve ter 4 dígitos'
+      } else if (!formData.accountNumber || formData.accountNumber.length === 0) {
+        isValid = false
+        errorMessage = 'Número da conta é obrigatório'
+      } else if (!formData.accountDigit || formData.accountDigit.length === 0) {
+        isValid = false
+        errorMessage = 'Dígito da conta é obrigatório'
+      }
+    } else if (isItau && !isPF) {
+      // Itaú PJ: precisa CNPJ
+      if (!formData.cnpj || formData.cnpj.length !== 14) {
+        isValid = false
+        errorMessage = 'CNPJ deve ter 14 dígitos'
+      }
+    } else {
+      // Outros bancos: CPF ou CNPJ
+      if (isPF && (!formData.cpf || formData.cpf.length !== 11)) {
+        isValid = false
+        errorMessage = 'CPF deve ter 11 dígitos'
+      } else if (!isPF && (!formData.cnpj || formData.cnpj.length !== 14)) {
+        isValid = false
+        errorMessage = 'CNPJ deve ter 14 dígitos'
+      }
+    }
+    
+    if (!isValid) {
+      alert(errorMessage)
       return
     }
 
@@ -89,16 +140,34 @@ export function ScrapersManager({
     setConnectionTestResult(null)
     
     try {
+      // Preparar credenciais baseado no banco
+      const credentials: any = {
+        bankCode: formData.bankCode,
+        password: passwordInput,
+        twoFactorSecret: formData.twoFactorSecret || undefined,
+      }
+      
+      if (isItau && isPF) {
+        credentials.cpf = formData.cpf
+        credentials.agency = formData.agency
+        credentials.accountNumber = formData.accountNumber
+        credentials.accountDigit = formData.accountDigit
+      } else if (isItau && !isPF) {
+        credentials.cnpj = formData.cnpj
+      } else {
+        // Outros bancos
+        if (isPF) {
+          credentials.cpf = formData.cpf
+        } else {
+          credentials.cnpj = formData.cnpj
+        }
+      }
+      
       // Testar conexão sem salvar
       const response = await fetch('/api/scrapers/test-connection', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          bankCode: formData.bankCode,
-          username: formData.username,
-          password: passwordInput, // Usar passwordInput, não formData.password
-          twoFactorSecret: formData.twoFactorSecret,
-        }),
+        body: JSON.stringify(credentials),
       })
 
       const data = await response.json()
@@ -126,8 +195,48 @@ export function ScrapersManager({
   }
 
   const handleConnect = async () => {
-    if (!formData.bankCode || !formData.entityId || !formData.username || !passwordInput) {
-      alert('Preencha todos os campos obrigatórios')
+    // Validar campos obrigatórios (mesma lógica do teste)
+    const selectedEntity = entities.find(e => e.id === formData.entityId)
+    const isPF = selectedEntity?.type === 'PF'
+    const isItau = formData.bankCode === 'itau'
+    
+    let isValid = true
+    let errorMessage = ''
+    
+    if (!formData.bankCode || !formData.entityId || !passwordInput) {
+      isValid = false
+      errorMessage = 'Preencha todos os campos obrigatórios'
+    } else if (isItau && isPF) {
+      if (!formData.cpf || formData.cpf.length !== 11) {
+        isValid = false
+        errorMessage = 'CPF deve ter 11 dígitos'
+      } else if (!formData.agency || formData.agency.length !== 4) {
+        isValid = false
+        errorMessage = 'Agência deve ter 4 dígitos'
+      } else if (!formData.accountNumber || formData.accountNumber.length === 0) {
+        isValid = false
+        errorMessage = 'Número da conta é obrigatório'
+      } else if (!formData.accountDigit || formData.accountDigit.length === 0) {
+        isValid = false
+        errorMessage = 'Dígito da conta é obrigatório'
+      }
+    } else if (isItau && !isPF) {
+      if (!formData.cnpj || formData.cnpj.length !== 14) {
+        isValid = false
+        errorMessage = 'CNPJ deve ter 14 dígitos'
+      }
+    } else {
+      if (isPF && (!formData.cpf || formData.cpf.length !== 11)) {
+        isValid = false
+        errorMessage = 'CPF deve ter 11 dígitos'
+      } else if (!isPF && (!formData.cnpj || formData.cnpj.length !== 14)) {
+        isValid = false
+        errorMessage = 'CNPJ deve ter 14 dígitos'
+      }
+    }
+    
+    if (!isValid) {
+      alert(errorMessage)
       return
     }
 
@@ -139,13 +248,36 @@ export function ScrapersManager({
     }
 
     try {
+      // Preparar credenciais para salvar
+      const credentials: any = {
+        bankCode: formData.bankCode,
+        entityId: formData.entityId,
+        password: passwordInput,
+        twoFactorSecret: formData.twoFactorSecret || undefined,
+        accountId: formData.accountId || undefined,
+        scheduleFrequency: formData.scheduleFrequency,
+        scheduleTime: formData.scheduleTime,
+      }
+      
+      if (isItau && isPF) {
+        credentials.cpf = formData.cpf
+        credentials.agency = formData.agency
+        credentials.accountNumber = formData.accountNumber
+        credentials.accountDigit = formData.accountDigit
+      } else if (isItau && !isPF) {
+        credentials.cnpj = formData.cnpj
+      } else {
+        if (isPF) {
+          credentials.cpf = formData.cpf
+        } else {
+          credentials.cnpj = formData.cnpj
+        }
+      }
+      
       const response = await fetch('/api/scrapers/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...formData,
-          password: passwordInput, // Usar passwordInput, nunca formData.password
-        }),
+        body: JSON.stringify(credentials),
       })
 
       const data = await response.json()
@@ -155,7 +287,11 @@ export function ScrapersManager({
         setFormData({
           bankCode: '' as BankCode | '',
           entityId: '',
-          username: '',
+          cpf: '',
+          cnpj: '',
+          agency: '',
+          accountNumber: '',
+          accountDigit: '',
           password: '', // Limpar
           twoFactorSecret: '',
           accountId: '',
@@ -415,7 +551,7 @@ export function ScrapersManager({
                         variant="outline"
                         size="sm"
                         onClick={handleTestConnection}
-                        disabled={testingConnection || !formData.bankCode || !formData.username || !passwordInput}
+                        disabled={testingConnection || !formData.bankCode || !formData.entityId || !passwordInput}
                       >
                         {testingConnection ? (
                           <>
@@ -515,7 +651,7 @@ export function ScrapersManager({
                   <Button 
                     onClick={handleConnect} 
                     className="flex-1"
-                    disabled={!formData.entityId || !formData.bankCode || !formData.username || !passwordInput}
+                    disabled={!formData.entityId || !formData.bankCode || !passwordInput}
                     variant={connectionTested && connectionTestResult?.success ? "default" : "secondary"}
                   >
                     {connectionTested && connectionTestResult?.success ? '✅ Salvar Conexão' : '💾 Salvar Conexão'}
