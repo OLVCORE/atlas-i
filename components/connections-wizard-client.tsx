@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Loader2, CheckCircle, XCircle, RefreshCw, Search } from "lucide-react"
 import { HelpTooltip } from "@/components/help/HelpTooltip"
 import { EnvStatus } from "@/lib/connectors/env"
+import { PluggyConnectButton } from "@/components/pluggy/PluggyConnectButton"
 
 type Entity = {
   id: string
@@ -104,7 +105,6 @@ export function ConnectionsWizardClient({
   const [envCheck, setEnvCheck] = useState<EnvStatus | null>(envStatus)
   const [validatingEnv, setValidatingEnv] = useState(false)
   const [catalogSearch, setCatalogSearch] = useState("")
-  const [openingPluggyWidget, setOpeningPluggyWidget] = useState(false)
 
   // Filtro de auditoria
   const [auditFilter, setAuditFilter] = useState<string>("")
@@ -161,104 +161,6 @@ export function ConnectionsWizardClient({
     }
   }
 
-  /**
-   * Aguarda o carregamento do PluggyConnect widget
-   */
-  const waitForPluggyConnect = async (timeoutMs = 3000): Promise<boolean> => {
-    const start = Date.now()
-    while (Date.now() - start < timeoutMs) {
-      if (typeof window !== 'undefined' && (window as any).PluggyConnect) {
-        return true
-      }
-      await new Promise((r) => setTimeout(r, 50))
-    }
-    return false
-  }
-
-  const handleOpenPluggyWidget = async () => {
-    // Verificar se há provider Pluggy ativo
-    const pluggyProvider = providers.find((p) => p.catalog_code === 'pluggy' && p.status === 'active')
-    if (!pluggyProvider) {
-      alert("Configure e ative o provider Pluggy primeiro.")
-      return
-    }
-
-    setOpeningPluggyWidget(true)
-    try {
-      // Aguardar carregamento do widget
-      const widgetLoaded = await waitForPluggyConnect(3000)
-      if (!widgetLoaded) {
-        console.warn('[Pluggy] window.PluggyConnect not available after timeout')
-        alert("Pluggy Connect ainda não carregou. Aguarde 2s e tente novamente.")
-        return
-      }
-
-      // Obter connect token
-      const tokenResponse = await fetch('/api/pluggy/connect-token')
-      if (!tokenResponse.ok) {
-        const errorData = await tokenResponse.json().catch(() => ({}))
-        throw new Error(errorData.error || 'Erro ao obter connect token')
-      }
-
-      const { connectToken } = await tokenResponse.json()
-      if (!connectToken) {
-        throw new Error('Connect token não retornado')
-      }
-
-      // Garantir que estamos no client
-      if (typeof window === 'undefined') {
-        throw new Error('Widget deve ser aberto apenas no client')
-      }
-
-      // Abrir widget
-      const PluggyConnect = (window as any).PluggyConnect
-      const widget = PluggyConnect({
-        connectToken,
-        onSuccess: async (payload: any) => {
-          const itemId = payload?.itemId || payload?.item?.id
-
-          if (!itemId) {
-            alert('Erro: itemId não retornado pelo widget')
-            return
-          }
-
-          try {
-            // Persistir conexão
-            const response = await fetch('/api/connections', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                providerKey: 'pluggy',
-                externalConnectionId: itemId,
-                entityId: entities.length > 0 ? entities[0].id : undefined,
-              }),
-            })
-
-            if (!response.ok) {
-              const errorData = await response.json().catch(() => ({}))
-              throw new Error(errorData.error || 'Erro ao salvar conexão')
-            }
-
-            // Recarregar página para mostrar nova conexão
-            router.refresh()
-          } catch (error) {
-            console.error('Erro ao salvar conexão:', error)
-            alert(error instanceof Error ? error.message : 'Erro ao salvar conexão')
-          }
-        },
-        onError: (error: any) => {
-          console.error('Erro no widget Pluggy:', error)
-          alert(error?.message || 'Erro ao conectar via Pluggy')
-        },
-      })
-      widget.init()
-    } catch (error) {
-      console.error('Erro ao abrir widget Pluggy:', error)
-      alert(error instanceof Error ? error.message : 'Erro ao abrir widget Pluggy')
-    } finally {
-      setOpeningPluggyWidget(false)
-    }
-  }
 
   const getStatusLabel = (status: string) => {
     switch (status) {
@@ -571,20 +473,10 @@ export function ConnectionsWizardClient({
               <div className="flex justify-between items-center">
                 <h3 className="text-lg font-semibold">Conexões</h3>
                 <div className="flex gap-2">
-                  <Button 
-                    onClick={handleOpenPluggyWidget}
-                    variant="default"
-                    disabled={openingPluggyWidget}
-                  >
-                    {openingPluggyWidget ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                        Abrindo...
-                      </>
-                    ) : (
-                      'Conectar via Pluggy'
-                    )}
-                  </Button>
+                  <PluggyConnectButton
+                    disabled={!providers.some(p => p.catalog_code === 'pluggy' && p.status === 'active')}
+                    entityId={entities.length > 0 ? entities[0].id : undefined}
+                  />
                   <Button onClick={() => {
                     setStep(3)
                     setConnectionEntityId("")
