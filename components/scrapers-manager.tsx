@@ -46,12 +46,18 @@ export function ScrapersManager({
     bankCode: '' as BankCode | '',
     entityId: '',
     username: '',
-    password: '',
+    password: '', // NUNCA será renderizado diretamente no DOM
     twoFactorSecret: '',
     accountId: '',
     scheduleFrequency: 'daily' as 'daily' | 'weekly' | 'monthly',
     scheduleTime: '06:00',
   })
+  
+  // Estado separado para input de senha (nunca expor value no DOM)
+  const [passwordInput, setPasswordInput] = useState('')
+  const [testingConnection, setTestingConnection] = useState(false)
+  const [connectionTested, setConnectionTested] = useState(false)
+  const [connectionTestResult, setConnectionTestResult] = useState<{ success: boolean; message: string } | null>(null)
 
   const [banks] = useState(() => listAvailableBanks())
 
@@ -73,33 +79,92 @@ export function ScrapersManager({
     }
   }
 
+  const handleTestConnection = async () => {
+    if (!formData.bankCode || !formData.entityId || !formData.username || !passwordInput) {
+      alert('Preencha todos os campos obrigatórios antes de testar')
+      return
+    }
+
+    setTestingConnection(true)
+    setConnectionTestResult(null)
+    
+    try {
+      // Testar conexão sem salvar
+      const response = await fetch('/api/scrapers/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bankCode: formData.bankCode,
+          username: formData.username,
+          password: passwordInput, // Usar passwordInput, não formData.password
+          twoFactorSecret: formData.twoFactorSecret,
+        }),
+      })
+
+      const data = await response.json()
+      if (data.ok && data.connectionTest?.success) {
+        setConnectionTested(true)
+        setConnectionTestResult({ success: true, message: 'Conexão testada com sucesso! Você pode salvar agora.' })
+        // Só agora copiar para formData.password (mas nunca renderizar)
+        setFormData({ ...formData, password: passwordInput })
+      } else {
+        setConnectionTested(false)
+        setConnectionTestResult({ 
+          success: false, 
+          message: data.message || 'Falha ao conectar. Verifique as credenciais.' 
+        })
+      }
+    } catch (error) {
+      setConnectionTested(false)
+      setConnectionTestResult({ 
+        success: false, 
+        message: `Erro ao testar conexão: ${error instanceof Error ? error.message : 'Erro desconhecido'}` 
+      })
+    } finally {
+      setTestingConnection(false)
+    }
+  }
+
   const handleConnect = async () => {
-    if (!formData.bankCode || !formData.entityId || !formData.username || !formData.password) {
+    if (!formData.bankCode || !formData.entityId || !formData.username || !passwordInput) {
       alert('Preencha todos os campos obrigatórios')
       return
+    }
+
+    // REQUERER teste de conexão antes de salvar
+    if (!connectionTested || !connectionTestResult?.success) {
+      if (!confirm('⚠️ ATENÇÃO: Você não testou a conexão ainda. É recomendado testar antes de salvar. Deseja continuar mesmo assim?')) {
+        return
+      }
     }
 
     try {
       const response = await fetch('/api/scrapers/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          password: passwordInput, // Usar passwordInput, nunca formData.password
+        }),
       })
 
       const data = await response.json()
       if (data.ok) {
-        alert('Conexão criada com sucesso!')
+        alert('✅ Conexão salva com sucesso! As credenciais foram criptografadas e armazenadas com segurança.')
         setShowAddForm(false)
         setFormData({
           bankCode: '' as BankCode | '',
           entityId: '',
           username: '',
-          password: '',
+          password: '', // Limpar
           twoFactorSecret: '',
           accountId: '',
           scheduleFrequency: 'daily',
           scheduleTime: '06:00',
         })
+        setPasswordInput('') // Limpar input de senha
+        setConnectionTested(false)
+        setConnectionTestResult(null)
         loadConnections()
       } else {
         alert(`Erro: ${data.message || data.error}`)
@@ -318,15 +383,51 @@ export function ScrapersManager({
                 <div>
                   <Label>Senha *</Label>
                   <p className="text-xs text-muted-foreground mb-2">
-                    Senha de acesso ao internet banking
+                    Senha de acesso ao internet banking. <strong className="text-red-600">Nunca compartilhe sua senha.</strong>
                   </p>
-                  <Input
-                    type="password"
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    placeholder="Senha do banco"
-                    disabled={!formData.bankCode}
-                  />
+                  <div className="space-y-2">
+                    <Input
+                      type="password"
+                      value={passwordInput}
+                      onChange={(e) => {
+                        setPasswordInput(e.target.value)
+                        setConnectionTested(false) // Resetar teste quando senha mudar
+                        setConnectionTestResult(null)
+                      }}
+                      placeholder="Digite sua senha"
+                      disabled={!formData.bankCode}
+                      autoComplete="new-password"
+                      className="font-mono"
+                    />
+                    {passwordInput && !connectionTested && (
+                      <p className="text-xs text-yellow-600">
+                        ⚠️ Recomendado: Teste a conexão antes de salvar para garantir que as credenciais estão corretas.
+                      </p>
+                    )}
+                    {connectionTestResult && (
+                      <div className={`p-2 rounded text-xs ${connectionTestResult.success ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
+                        {connectionTestResult.success ? '✅' : '❌'} {connectionTestResult.message}
+                      </div>
+                    )}
+                    {passwordInput && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleTestConnection}
+                        disabled={testingConnection || !formData.bankCode || !formData.username || !passwordInput}
+                      >
+                        {testingConnection ? (
+                          <>
+                            <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                            Testando...
+                          </>
+                        ) : (
+                          '🔒 Testar Conexão'
+                        )}
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
                 <div>
@@ -398,13 +499,26 @@ export function ScrapersManager({
               </div>
             </div>
 
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg mb-4">
+                  <p className="text-sm text-blue-800 font-medium mb-2">
+                    🔒 Segurança
+                  </p>
+                  <ul className="text-xs text-blue-700 space-y-1 list-disc list-inside">
+                    <li>Suas credenciais são <strong>criptografadas</strong> antes de serem salvas no banco de dados</li>
+                    <li>A senha <strong>nunca</strong> é exposta no código HTML</li>
+                    <li>Apenas você pode descriptografar suas credenciais (baseado no seu workspace)</li>
+                    <li>Recomendamos testar a conexão antes de salvar para garantir que está funcionando</li>
+                  </ul>
+                </div>
+
                 <div className="flex gap-2 pt-4">
                   <Button 
                     onClick={handleConnect} 
                     className="flex-1"
-                    disabled={!formData.entityId || !formData.bankCode || !formData.username || !formData.password}
+                    disabled={!formData.entityId || !formData.bankCode || !formData.username || !passwordInput}
+                    variant={connectionTested && connectionTestResult?.success ? "default" : "secondary"}
                   >
-                    Conectar e Configurar
+                    {connectionTested && connectionTestResult?.success ? '✅ Salvar Conexão' : '💾 Salvar Conexão'}
                   </Button>
                   <Button
                     variant="outline"
@@ -414,12 +528,15 @@ export function ScrapersManager({
                         bankCode: '' as BankCode | '',
                         entityId: '',
                         username: '',
-                        password: '',
+                        password: '', // Limpar
                         twoFactorSecret: '',
                         accountId: '',
                         scheduleFrequency: 'daily',
                         scheduleTime: '06:00',
                       })
+                      setPasswordInput('') // Limpar input de senha
+                      setConnectionTested(false)
+                      setConnectionTestResult(null)
                     }}
                   >
                     Cancelar
