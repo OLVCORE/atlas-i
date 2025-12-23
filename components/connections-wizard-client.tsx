@@ -161,6 +161,20 @@ export function ConnectionsWizardClient({
     }
   }
 
+  /**
+   * Aguarda o carregamento do PluggyConnect widget
+   */
+  const waitForPluggyConnect = async (timeoutMs = 3000): Promise<boolean> => {
+    const start = Date.now()
+    while (Date.now() - start < timeoutMs) {
+      if (typeof window !== 'undefined' && (window as any).PluggyConnect) {
+        return true
+      }
+      await new Promise((r) => setTimeout(r, 50))
+    }
+    return false
+  }
+
   const handleOpenPluggyWidget = async () => {
     // Verificar se há provider Pluggy ativo
     const pluggyProvider = providers.find((p) => p.catalog_code === 'pluggy' && p.status === 'active')
@@ -171,6 +185,14 @@ export function ConnectionsWizardClient({
 
     setOpeningPluggyWidget(true)
     try {
+      // Aguardar carregamento do widget
+      const widgetLoaded = await waitForPluggyConnect(3000)
+      if (!widgetLoaded) {
+        console.warn('[Pluggy] window.PluggyConnect not available after timeout')
+        alert("Pluggy Connect ainda não carregou. Aguarde 2s e tente novamente.")
+        return
+      }
+
       // Obter connect token
       const tokenResponse = await fetch('/api/pluggy/connect-token')
       if (!tokenResponse.ok) {
@@ -183,13 +205,14 @@ export function ConnectionsWizardClient({
         throw new Error('Connect token não retornado')
       }
 
-      // Verificar se PluggyConnect está disponível
-      if (typeof window === 'undefined' || !(window as any).PluggyConnect) {
-        throw new Error('Pluggy Connect widget não carregado. Recarregue a página.')
+      // Garantir que estamos no client
+      if (typeof window === 'undefined') {
+        throw new Error('Widget deve ser aberto apenas no client')
       }
 
       // Abrir widget
-      ;(window as any).PluggyConnect({
+      const PluggyConnect = (window as any).PluggyConnect
+      const widget = PluggyConnect({
         connectToken,
         onSuccess: async (payload: any) => {
           const itemId = payload?.itemId || payload?.item?.id
@@ -227,7 +250,8 @@ export function ConnectionsWizardClient({
           console.error('Erro no widget Pluggy:', error)
           alert(error?.message || 'Erro ao conectar via Pluggy')
         },
-      }).init()
+      })
+      widget.init()
     } catch (error) {
       console.error('Erro ao abrir widget Pluggy:', error)
       alert(error instanceof Error ? error.message : 'Erro ao abrir widget Pluggy')
