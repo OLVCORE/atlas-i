@@ -108,7 +108,7 @@ export async function syncScraperConnection(
       importResult: {
         transactionsImported: importResult.imported.transactions,
         transactionsSkipped: importResult.skipped.duplicates,
-        reconciliations: importResult.imported.cardInstallments || 0,
+        reconciliations: 0, // TODO: Adicionar cardInstallments ao ImportResult quando implementado
         errors: importResult.errors.length,
       },
       duration: Date.now() - startTime,
