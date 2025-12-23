@@ -69,7 +69,10 @@ export async function getPluggyApiKey(): Promise<string> {
       console.error('[pluggy:auth] Erro ao obter API Key:', response.status, errorText.substring(0, 200))
       
       // Se for 401 ou 403, as credenciais podem estar incorretas
+      // Limpar cache antes de lançar erro
       if (response.status === 401 || response.status === 403) {
+        apiKeyCache = null // Limpar cache imediatamente
+        console.warn('[pluggy:auth] Cache limpo devido a erro 401/403 na autenticação')
         throw new Error(`pluggy_auth_error: ${errorDetails}. Verifique se PLUGGY_CLIENT_ID e PLUGGY_CLIENT_SECRET estão corretos na Vercel`)
       }
       

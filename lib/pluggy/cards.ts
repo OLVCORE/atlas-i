@@ -176,6 +176,7 @@ export async function getOrCreateCardFromPluggyAccount(
           onConflict: 'external_account_id',
         })
     }
+  }
 
   return { cardId: card.id, isNew: true }
 }
