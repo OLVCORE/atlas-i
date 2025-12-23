@@ -24,9 +24,21 @@ export abstract class BaseScraper {
 
     // Usar Browserless.io se configurado, senão usar local
     const browserlessUrl = process.env.BROWSERLESS_URL
-    const browserWSEndpoint = browserlessUrl
-      ? `${browserlessUrl}?token=${process.env.BROWSERLESS_TOKEN || ''}`
-      : undefined
+    const browserlessToken = process.env.BROWSERLESS_TOKEN
+    
+    // Se Browserless está configurado, usar WebSocket endpoint
+    let browserWSEndpoint: string | undefined = undefined
+    
+    if (browserlessUrl && browserlessToken) {
+      // Browserless.io usa WebSocket (wss://) para conectar ao Puppeteer
+      // Se a URL fornecida já for wss://, usar diretamente
+      // Se for https://, converter para wss://
+      const wsUrl = browserlessUrl.startsWith('wss://') 
+        ? browserlessUrl 
+        : browserlessUrl.replace(/^https?:\/\//, 'wss://').replace(/^ws:\/\//, 'wss://')
+      
+      browserWSEndpoint = `${wsUrl}?token=${browserlessToken}`
+    }
 
     this.browser = await puppeteer.launch({
       headless: true,

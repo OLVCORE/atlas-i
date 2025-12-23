@@ -223,6 +223,24 @@ export function ImportWizard({
         {/* Step 2: Preview e Configuração */}
         {step === 2 && preview && (
           <div className="space-y-4">
+            {entities.length === 0 ? (
+              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm text-yellow-800 font-medium mb-2">
+                  ⚠️ Nenhuma entidade cadastrada
+                </p>
+                <p className="text-sm text-yellow-700 mb-3">
+                  Você precisa criar uma entidade (Pessoa Física ou Pessoa Jurídica) antes de importar planilhas.
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={() => window.location.href = '/app/entities'}
+                >
+                  Criar Entidade
+                </Button>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-4">
             {/* Preview */}
             <div className="border rounded-lg p-4 bg-gray-50">
               <h3 className="font-medium mb-2">Preview do Arquivo</h3>
@@ -278,41 +296,55 @@ export function ImportWizard({
               )}
             </div>
             
-            {/* Configuração */}
-            <div>
-              <Label htmlFor="entity">Entidade *</Label>
-              <Select value={entityId} onValueChange={setEntityId}>
-                <SelectTrigger id="entity">
-                  <SelectValue placeholder="Selecione a entidade" />
-                </SelectTrigger>
-                <SelectContent>
-                  {entities.map((entity) => (
-                    <SelectItem key={entity.id} value={entity.id}>
-                      {entity.legal_name} ({entity.type})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+                {/* Configuração */}
+                <div className="border-t pt-4">
+                  <h3 className="font-medium mb-4">Configuração da Importação</h3>
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="entity">Entidade *</Label>
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Selecione a entidade (PF ou PJ) à qual estas transações pertencem
+                      </p>
+                      <Select value={entityId} onValueChange={setEntityId}>
+                        <SelectTrigger id="entity">
+                          <SelectValue placeholder="Selecione a entidade (PF ou PJ)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {entities.map((entity) => (
+                            <SelectItem key={entity.id} value={entity.id}>
+                              {entity.legal_name} ({entity.type === 'PF' ? 'Pessoa Física' : 'Pessoa Jurídica'})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-            <div>
-              <Label htmlFor="account">Conta (opcional)</Label>
-              <Select value={accountId} onValueChange={setAccountId}>
-                <SelectTrigger id="account">
-                  <SelectValue placeholder="Selecione uma conta existente ou deixe vazio" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">Nenhuma (criar nova ou usar padrão)</SelectItem>
-                  {entityAccounts.map((account) => (
-                    <SelectItem key={account.id} value={account.id}>
-                      {account.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+                    <div>
+                      <Label htmlFor="account">Conta (opcional)</Label>
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Selecione uma conta existente ou deixe vazio para criar automaticamente
+                      </p>
+                      <Select 
+                        value={accountId || undefined} 
+                        onValueChange={(v) => setAccountId(v === "__none__" ? "" : v)}
+                        disabled={!entityId}
+                      >
+                        <SelectTrigger id="account">
+                          <SelectValue placeholder={entityId ? "Selecione a conta (opcional)" : "Selecione primeiro a entidade"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">Nenhuma (criar automaticamente)</SelectItem>
+                          {entityAccounts.map((account) => (
+                            <SelectItem key={account.id} value={account.id}>
+                              {account.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-            {!accountId && (
+                    {!accountId && entityId && (
               <div className="space-y-2 p-4 bg-gray-50 rounded-lg">
                 <Label htmlFor="accountName">Nome da nova conta (se não existir)</Label>
                 <Input
@@ -353,25 +385,29 @@ export function ImportWizard({
               </Label>
             </div>
 
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => { setStep(1); setPreview(null) }}>
-                Voltar
-              </Button>
-              <Button
-                onClick={handleImport}
-                disabled={!entityId || importing}
-                className="flex-1"
-              >
-                {importing ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Importando...
-                  </>
-                ) : (
-                  "Importar"
-                )}
-              </Button>
-            </div>
+                    <div className="flex gap-2 pt-4">
+                      <Button variant="outline" onClick={() => { setStep(1); setPreview(null) }}>
+                        Voltar
+                      </Button>
+                      <Button
+                        onClick={handleImport}
+                        disabled={!entityId || importing}
+                        className="flex-1"
+                      >
+                        {importing ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Importando...
+                          </>
+                        ) : (
+                          "Importar"
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         )}
 

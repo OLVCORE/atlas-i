@@ -228,96 +228,145 @@ export function ScrapersManager({
       {showAddForm ? (
         <Card>
           <CardHeader>
-            <CardTitle>Nova Conexão</CardTitle>
+            <CardTitle>Nova Conexão Bancária</CardTitle>
+            <p className="text-sm text-muted-foreground mt-2">
+              Configure uma conexão automática para importar extratos e transações do banco
+            </p>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div>
-              <Label>Banco *</Label>
-              <Select
-                value={formData.bankCode}
-                onValueChange={(v) => setFormData({ ...formData, bankCode: v as BankCode })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o banco" />
-                </SelectTrigger>
-                <SelectContent>
-                  {banks.map((bank) => (
-                    <SelectItem key={bank.code} value={bank.code}>
-                      {bank.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {entities.length === 0 ? (
+              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm text-yellow-800 font-medium mb-2">
+                  ⚠️ Nenhuma entidade cadastrada
+                </p>
+                <p className="text-sm text-yellow-700 mb-3">
+                  Você precisa criar uma entidade (Pessoa Física ou Pessoa Jurídica) antes de configurar scrapers.
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={() => window.location.href = '/app/entities'}
+                >
+                  Criar Entidade
+                </Button>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <Label>Entidade *</Label>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Selecione a entidade (PF ou PJ) que possui esta conta bancária
+                  </p>
+                  <Select
+                    value={formData.entityId}
+                    onValueChange={(v) => {
+                      setFormData({ 
+                        ...formData, 
+                        entityId: v,
+                        accountId: '' // Limpar conta ao trocar entidade
+                      })
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a entidade (PF ou PJ)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {entities.map((entity) => (
+                        <SelectItem key={entity.id} value={entity.id}>
+                          {entity.legal_name} ({entity.type === 'PF' ? 'Pessoa Física' : 'Pessoa Jurídica'})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            <div>
-              <Label>Entidade *</Label>
-              <Select
-                value={formData.entityId}
-                onValueChange={(v) => setFormData({ ...formData, entityId: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a entidade" />
-                </SelectTrigger>
-                <SelectContent>
-                  {entities.map((entity) => (
-                    <SelectItem key={entity.id} value={entity.id}>
-                      {entity.legal_name} ({entity.type})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+                <div>
+                  <Label>Banco *</Label>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Selecione o banco que você deseja conectar
+                  </p>
+                  <Select
+                    value={formData.bankCode}
+                    onValueChange={(v) => setFormData({ ...formData, bankCode: v as BankCode })}
+                    disabled={!formData.entityId}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={formData.entityId ? "Selecione o banco" : "Selecione primeiro a entidade"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {banks.map((bank) => (
+                        <SelectItem key={bank.code} value={bank.code}>
+                          {bank.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            <div>
-              <Label>Usuário/CPF/CNPJ *</Label>
-              <Input
-                value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                placeholder="CPF, CNPJ ou usuário"
-              />
-            </div>
+                <div>
+                  <Label>Usuário/CPF/CNPJ *</Label>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    CPF (se PF) ou CNPJ (se PJ), ou nome de usuário do banco
+                  </p>
+                  <Input
+                    value={formData.username}
+                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                    placeholder="CPF, CNPJ ou usuário"
+                    disabled={!formData.bankCode}
+                  />
+                </div>
 
-            <div>
-              <Label>Senha *</Label>
-              <Input
-                type="password"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                placeholder="Senha do banco"
-              />
-            </div>
+                <div>
+                  <Label>Senha *</Label>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Senha de acesso ao internet banking
+                  </p>
+                  <Input
+                    type="password"
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    placeholder="Senha do banco"
+                    disabled={!formData.bankCode}
+                  />
+                </div>
 
-            <div>
-              <Label>Secret 2FA (opcional)</Label>
-              <Input
-                value={formData.twoFactorSecret}
-                onChange={(e) => setFormData({ ...formData, twoFactorSecret: e.target.value })}
-                placeholder="Secret para autenticação de dois fatores"
-              />
-            </div>
+                <div>
+                  <Label>Secret 2FA (opcional)</Label>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Se o banco usar autenticação de dois fatores (2FA), informe o secret aqui
+                  </p>
+                  <Input
+                    value={formData.twoFactorSecret}
+                    onChange={(e) => setFormData({ ...formData, twoFactorSecret: e.target.value })}
+                    placeholder="Secret para autenticação de dois fatores (opcional)"
+                    disabled={!formData.bankCode}
+                  />
+                </div>
 
-            <div>
-              <Label>Conta (opcional)</Label>
-              <Select
-                value={formData.accountId}
-                onValueChange={(v) => setFormData({ ...formData, accountId: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a conta" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">Nenhuma</SelectItem>
-                  {accounts
-                    .filter((acc) => acc.entity_id === formData.entityId)
-                    .map((account) => (
-                      <SelectItem key={account.id} value={account.id}>
-                        {account.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
+                <div>
+                  <Label>Conta (opcional)</Label>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Selecione uma conta existente ou deixe vazio para criar automaticamente
+                  </p>
+                  <Select
+                    value={formData.accountId || undefined}
+                    onValueChange={(v) => setFormData({ ...formData, accountId: v === "__none__" ? "" : v })}
+                    disabled={!formData.entityId}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={formData.entityId ? "Selecione a conta (opcional)" : "Selecione primeiro a entidade"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Nenhuma (criar automaticamente)</SelectItem>
+                      {accounts
+                        .filter((acc) => acc.entity_id === formData.entityId)
+                        .map((account) => (
+                          <SelectItem key={account.id} value={account.id}>
+                            {account.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -349,17 +398,35 @@ export function ScrapersManager({
               </div>
             </div>
 
-            <div className="flex gap-2">
-              <Button onClick={handleConnect} className="flex-1">
-                Conectar
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => setShowAddForm(false)}
-              >
-                Cancelar
-              </Button>
-            </div>
+                <div className="flex gap-2 pt-4">
+                  <Button 
+                    onClick={handleConnect} 
+                    className="flex-1"
+                    disabled={!formData.entityId || !formData.bankCode || !formData.username || !formData.password}
+                  >
+                    Conectar e Configurar
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowAddForm(false)
+                      setFormData({
+                        bankCode: '' as BankCode | '',
+                        entityId: '',
+                        username: '',
+                        password: '',
+                        twoFactorSecret: '',
+                        accountId: '',
+                        scheduleFrequency: 'daily',
+                        scheduleTime: '06:00',
+                      })
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       ) : (
