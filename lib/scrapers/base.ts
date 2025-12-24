@@ -30,24 +30,30 @@ export abstract class BaseScraper {
     let browserWSEndpoint: string | undefined = undefined
     
     if (browserlessUrl && browserlessToken) {
-      // Browserless.io: usar connect() para conectar via WebSocket
-      // Formato: wss://chrome.browserless.io?token=TOKEN
-      let wsUrl = browserlessUrl
+      // Browserless.io: usar puppeteer.connect() para conectar via WebSocket
+      // Formato esperado: wss://chrome.browserless.io ou https://chrome.browserless.io
+      // Token é passado como query parameter: ?token=TOKEN
       
-      // Converter https:// para wss:// se necessário
+      let wsUrl = browserlessUrl.trim()
+      
+      // Se a URL começa com https://, converter para wss://
       if (wsUrl.startsWith('https://')) {
         wsUrl = wsUrl.replace('https://', 'wss://')
-      } else if (wsUrl.startsWith('http://')) {
+      } 
+      // Se começa com http://, converter para ws://
+      else if (wsUrl.startsWith('http://')) {
         wsUrl = wsUrl.replace('http://', 'ws://')
-      } else if (!wsUrl.startsWith('wss://') && !wsUrl.startsWith('ws://')) {
-        // Se não tem protocolo, assumir wss://
+      }
+      // Se não tem protocolo, adicionar wss://
+      else if (!wsUrl.startsWith('wss://') && !wsUrl.startsWith('ws://')) {
         wsUrl = `wss://${wsUrl}`
       }
       
-      // Adicionar token como query parameter
-      const url = new URL(wsUrl)
-      url.searchParams.set('token', browserlessToken)
-      browserWSEndpoint = url.toString()
+      // Construir URL completa com token
+      const separator = wsUrl.includes('?') ? '&' : '?'
+      browserWSEndpoint = `${wsUrl}${separator}token=${browserlessToken}`
+      
+      console.log('[BaseScraper] Conectando ao Browserless:', browserWSEndpoint.replace(browserlessToken, 'TOKEN_REDACTED'))
       
       // Usar puppeteer.connect() em vez de launch() para Browserless
       try {
@@ -56,20 +62,21 @@ export abstract class BaseScraper {
           defaultViewport: null,
         })
         
-        // Obter página existente ou criar nova
-        const pages = await this.browser.pages()
-        this.page = pages.length > 0 ? pages[0] : await this.browser.newPage()
+        // Criar nova página
+        this.page = await this.browser.newPage()
         
-        // Configurar user agent
+        // Configurar user agent para parecer um navegador real
         await this.page.setUserAgent(
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         )
         this.page.setDefaultTimeout(30000)
         
+        console.log('[BaseScraper] Conectado ao Browserless com sucesso')
         return // Sair aqui, já conectou
       } catch (error) {
         console.error('[BaseScraper] Erro ao conectar ao Browserless:', error)
-        throw new Error(`Falha ao conectar ao Browserless: ${error instanceof Error ? error.message : String(error)}`)
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        throw new Error(`Falha ao conectar ao Browserless: ${errorMessage}. Verifique se BROWSERLESS_URL e BROWSERLESS_TOKEN estão corretos.`)
       }
     }
 
@@ -101,9 +108,23 @@ export abstract class BaseScraper {
    */
   protected async closeBrowser(): Promise<void> {
     if (this.browser) {
-      await this.browser.close()
-      this.browser = null
-      this.page = null
+      try {
+        // Se conectado via Browserless (não foi criado localmente), desconectar
+        const browserlessUrl = process.env.BROWSERLESS_URL
+        if (browserlessUrl) {
+          // Browserless: usar disconnect() em vez de close()
+          await this.browser.disconnect()
+        } else {
+          // Local: usar close()
+          await this.browser.close()
+        }
+      } catch (error) {
+        console.error('[BaseScraper] Erro ao fechar browser:', error)
+        // Continuar mesmo se houver erro ao fechar
+      } finally {
+        this.browser = null
+        this.page = null
+      }
     }
   }
 
