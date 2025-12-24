@@ -405,22 +405,59 @@ export class ItauScraper extends BaseScraper {
         hasPassword: !!password
       })
 
-      // Navegar DIRETO para página de login do Internet Banking
-      // URL direta evita navegação pela home que pode levar para páginas de marketing
-      const loginUrl = 'https://www.itau.com.br/conta-corrente/acesse-sua-conta/'
-      console.log(`[ItauScraper] 🌐 Navegando DIRETO para login: ${loginUrl}`)
+      // Tentar múltiplas URLs de login do Internet Banking
+      // A URL antiga pode ter sido descontinuada
+      const loginUrls = [
+        'https://internetbanking.itau.com.br/',
+        'https://www.itau.com.br/conta-corrente/acesse-sua-conta/',
+        'https://www.itau.com.br/',
+        'https://banco.itau.com.br/'
+      ]
       
-      await this.page.goto(loginUrl, {
-        waitUntil: 'networkidle2',
-        timeout: 30000
-      })
+      let finalUrl = ''
+      let loginFound = false
       
-      const finalUrl = this.page.url()
-      console.log(`[ItauScraper] ✅ Página carregada: ${finalUrl}`)
+      for (const loginUrl of loginUrls) {
+        try {
+          console.log(`[ItauScraper] 🌐 Tentando URL: ${loginUrl}`)
+          
+          await this.page.goto(loginUrl, {
+            waitUntil: 'networkidle2',
+            timeout: 30000
+          })
+          
+          finalUrl = this.page.url()
+          console.log(`[ItauScraper] ✅ Página carregada: ${finalUrl}`)
+          
+          // Verificar se não caiu em página de erro
+          if (await this.isErrorPage()) {
+            console.log(`[ItauScraper] ❌ URL ${loginUrl} redirecionou para 404, tentando próxima...`)
+            continue
+          }
+          
+          // Verificar se há campos de login
+          const hasLoginFields = await this.page.evaluate(() => {
+            const inputs = Array.from(document.querySelectorAll('input'))
+            const hasPasswordField = inputs.some(i => i.type === 'password')
+            const hasTextField = inputs.some(i => ['text', 'tel', 'number'].includes(i.type))
+            return hasPasswordField || hasTextField
+          })
+          
+          if (hasLoginFields) {
+            console.log(`[ItauScraper] ✅ URL de login encontrada: ${finalUrl}`)
+            loginFound = true
+            break
+          } else {
+            console.log(`[ItauScraper] ⚠️ URL ${loginUrl} não tem campos de login, tentando próxima...`)
+          }
+        } catch (error) {
+          console.log(`[ItauScraper] ❌ Erro ao acessar ${loginUrl}:`, error)
+          continue
+        }
+      }
       
-      // Verificar se não caiu em página de erro
-      if (await this.isErrorPage()) {
-        throw new Error('Página de login redirecionou para erro 404')
+      if (!loginFound) {
+        throw new Error('Não foi possível encontrar página de login do Itaú. Todas as URLs tentadas retornaram erro ou não contêm campos de login.')
       }
       
       await new Promise(resolve => setTimeout(resolve, 5000))
