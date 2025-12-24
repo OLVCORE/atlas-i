@@ -16,6 +16,72 @@ export class ItauScraper extends BaseScraper {
   }
 
   /**
+   * Helper para capturar screenshot e logar (base64 para logs)
+   */
+  private async _takeScreenshot(filenameSuffix: string): Promise<void> {
+    try {
+      const screenshot = await this.page!.screenshot({ encoding: 'base64', fullPage: false })
+      console.log(`[ItauScraper] Screenshot (${filenameSuffix}) capturado (base64, primeiros 100 chars):`, screenshot.substring(0, 100))
+    } catch (e) {
+      console.log(`[ItauScraper] Não foi possível capturar screenshot (${filenameSuffix}):`, e)
+    }
+  }
+
+  /**
+   * Estratégia robusta de preenchimento de campos
+   * Remove disabled/readonly, limpa, digita, verifica e tem fallback via JS
+   */
+  private async _fillInputRobustly(
+    input: any,
+    value: string,
+    fieldName: string
+  ): Promise<void> {
+    try {
+      console.log(`[ItauScraper] Preenchendo campo ${fieldName} com estratégia robusta...`)
+      
+      // Estratégia 1: Remover disabled/readonly via JavaScript
+      await this.page!.evaluate((el) => {
+        el.removeAttribute('disabled')
+        el.removeAttribute('readonly')
+        ;(el as HTMLInputElement).disabled = false
+        ;(el as HTMLInputElement).readOnly = false
+      }, input)
+
+      // Estratégia 2: Focar e limpar
+      await input.click({ clickCount: 3 }) // Selecionar tudo
+      await this.page!.keyboard.press('Backspace') // Limpar
+
+      // Estratégia 3: Digitar com delay
+      await input.type(value, { delay: 100 })
+
+      // Estratégia 4: Verificar se valor foi setado
+      const actualValue = await this.page!.evaluate((el: any) => el.value, input)
+      if (actualValue !== value) {
+        console.warn(`[ItauScraper] Campo ${fieldName} não preenchido corretamente via .type(), tentando via JS.`)
+        // Fallback: Set via JavaScript
+        await this.page!.evaluate((el: any, val: string) => {
+          el.value = val
+          el.dispatchEvent(new Event('input', { bubbles: true }))
+          el.dispatchEvent(new Event('change', { bubbles: true }))
+          el.dispatchEvent(new Event('blur', { bubbles: true }))
+        }, input, value)
+      }
+
+      // Verificação final
+      const finalValue = await this.page!.evaluate((el: any) => el.value, input)
+      const success = finalValue === value || finalValue.includes(value.replace(/\D/g, ''))
+      console.log(`[ItauScraper] Campo ${fieldName} preenchido: ${success ? '✓' : '✗'} (valor final: '${finalValue}', esperado: '${value}')`)
+
+      if (!success) {
+        throw new Error(`Erro ao preencher campo ${fieldName}: Valor final '${finalValue}' diferente do esperado '${value}'`)
+      }
+    } catch (error) {
+      console.error(`[ItauScraper] Erro na estratégia robusta de preenchimento para ${fieldName}:`, error)
+      throw error
+    }
+  }
+
+  /**
    * Faz login no Itaú
    */
   protected async login(): Promise<void> {
@@ -180,8 +246,7 @@ export class ItauScraper extends BaseScraper {
         }
         
         if (cpfInput) {
-          await cpfInput.type(cpf.replace(/\D/g, ''), { delay: 100 })
-          console.log('[ItauScraper] CPF preenchido:', cpf.replace(/\D/g, ''))
+          await this._fillInputRobustly(cpfInput, cpf.replace(/\D/g, ''), 'CPF')
           
           // Clicar em "Continuar" ou aguardar próxima etapa
           // Usar XPath para encontrar botão com texto "Continuar" (Puppeteer não suporta :has-text)
@@ -272,8 +337,7 @@ export class ItauScraper extends BaseScraper {
         }
         
         if (agenciaInput) {
-          await agenciaInput.type(agency.replace(/\D/g, ''), { delay: 100 })
-          console.log('[ItauScraper] Agência preenchida:', agency.replace(/\D/g, ''))
+          await this._fillInputRobustly(agenciaInput, agency.replace(/\D/g, ''), 'Agência')
         } else {
           // Log final detalhado antes de lançar erro
           const finalPageInfo = await this.page.evaluate(() => {
@@ -344,18 +408,30 @@ export class ItauScraper extends BaseScraper {
           
           for (const format of accountFormats) {
             try {
-              await contaInput.click({ clickCount: 3 }) // Selecionar tudo
-              await contaInput.type(format, { delay: 100 })
-              console.log('[ItauScraper] Conta preenchida:', format)
+              await this._fillInputRobustly(contaInput, format, 'Conta')
               accountFilled = true
               break
             } catch (e) {
+              console.warn(`[ItauScraper] Formato '${format}' falhou, tentando próximo...`)
               // Tentar próximo formato
             }
           }
           
           if (!accountFilled) {
-            throw new Error('Erro ao preencher campo Conta')
+            // Log detalhado antes de lançar erro
+            const contaInfo = await this.page.evaluate((el: any) => {
+              return {
+                value: el.value,
+                disabled: el.disabled,
+                readonly: el.readOnly,
+                className: el.className,
+                name: el.name,
+                id: el.id,
+                placeholder: el.placeholder,
+              }
+            }, contaInput)
+            console.error('[ItauScraper] ERRO: Campo Conta não preenchido. Informações do campo:', JSON.stringify(contaInfo, null, 2))
+            throw new Error('Erro ao preencher campo Conta após tentar todos os formatos')
           }
         } else {
           throw new Error('Campo Conta não encontrado na página de login')
@@ -402,8 +478,7 @@ export class ItauScraper extends BaseScraper {
       }
       
       if (passwordInput) {
-        await passwordInput.type(password, { delay: 100 })
-        console.log('[ItauScraper] Senha preenchida')
+        await this._fillInputRobustly(passwordInput, password, 'Senha')
       } else {
         throw new Error('Campo senha não encontrado na página de login')
       }
