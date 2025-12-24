@@ -16,257 +16,68 @@ export class ItauScraper extends BaseScraper {
   }
 
   /**
-   * Método auxiliar robusto para clicar em elementos
-   * Tenta 3 estratégias diferentes em sequência
+   * Helper para capturar screenshot e logar (base64 para logs)
    */
-  private async safeClick(description: string, selectors?: string[]): Promise<boolean> {
-    if (!this.page) {
-      throw new Error('Página não inicializada')
-    }
-
-    console.log(`[ItauScraper] Tentando clicar em: ${description}`)
-    
-    // Estratégia 1: Seletores CSS diretos
-    if (selectors && selectors.length > 0) {
-      for (const selector of selectors) {
-        try {
-          const element = await this.page.$(selector)
-          if (element) {
-            const isVisible = await this.page.evaluate((el) => {
-              return el instanceof HTMLElement && el.offsetParent !== null
-            }, element)
-            
-            if (isVisible) {
-              await element.scrollIntoViewIfNeeded()
-              await element.click()
-              console.log(`[ItauScraper] ✓ Clique bem-sucedido via seletor: ${selector}`)
-              return true
-            }
-          }
-        } catch (e) {
-          console.log(`[ItauScraper] Falha no seletor ${selector}:`, e)
-        }
-      }
-    }
-    
-    // Estratégia 2: Buscar por texto via evaluateHandle + validação
+  private async _takeScreenshot(filenameSuffix: string): Promise<void> {
     try {
-      const elementHandle = await this.page.evaluateHandle((desc) => {
-        const buttons = Array.from(document.querySelectorAll('button, a, input[type="submit"]'))
-        return buttons.find((el: any) => {
-          const text = (el.textContent || el.value || '').toLowerCase()
-          return text.includes(desc.toLowerCase())
-        })
-      }, description)
-      
-      // CRÍTICO: Validar se é um elemento válido
-      if (elementHandle) {
-        const isElement = await this.page.evaluate((el) => {
-          return el instanceof HTMLElement && el !== null
-        }, elementHandle)
-        
-        if (isElement) {
-          const isVisible = await this.page.evaluate((el) => {
-            return (el as HTMLElement).offsetParent !== null
-          }, elementHandle)
-          
-          if (isVisible) {
-            await (elementHandle as any).scrollIntoViewIfNeeded()
-            await (elementHandle as any).click()
-            console.log(`[ItauScraper] ✓ Clique bem-sucedido via texto: ${description}`)
-            return true
-          }
-        }
-      }
+      const screenshot = await this.page!.screenshot({ encoding: 'base64', fullPage: false })
+      console.log(`[ItauScraper] Screenshot (${filenameSuffix}) capturado (base64, primeiros 100 chars):`, screenshot.substring(0, 100))
     } catch (e) {
-      console.log(`[ItauScraper] Falha no clique via texto:`, e)
+      console.log(`[ItauScraper] Não foi possível capturar screenshot (${filenameSuffix}):`, e)
     }
-    
-    // Estratégia 3: Clique via JavaScript (fallback)
-    try {
-      const clicked = await this.page.evaluate((desc) => {
-        const buttons = Array.from(document.querySelectorAll('button, a, input[type="submit"]'))
-        const button = buttons.find((el: any) => {
-          const text = (el.textContent || el.value || '').toLowerCase()
-          return text.includes(desc.toLowerCase())
-        }) as HTMLElement
-        
-        if (button && button.offsetParent !== null) {
-          button.click()
-          return true
-        }
-        return false
-      }, description)
-      
-      if (clicked) {
-        console.log(`[ItauScraper] ✓ Clique bem-sucedido via JavaScript: ${description}`)
-        return true
-      }
-    } catch (e) {
-      console.log(`[ItauScraper] Falha no clique via JavaScript:`, e)
-    }
-    
-    console.log(`[ItauScraper] ✗ Todas as estratégias de clique falharam para: ${description}`)
-    return false
   }
 
   /**
-   * Método auxiliar robusto para preencher campos de input
-   * Remove atributos disabled/readonly e valida preenchimento
+   * Estratégia robusta de preenchimento de campos
+   * Remove disabled/readonly, limpa, digita, verifica e tem fallback via JS
    */
-  private async safeFillInput(
-    fieldName: string,
+  private async _fillInputRobustly(
+    input: any,
     value: string,
-    selectors: string[]
+    fieldName: string
   ): Promise<void> {
-    if (!this.page) {
-      throw new Error('Página não inicializada')
-    }
-
-    console.log(`[ItauScraper] Procurando campo: ${fieldName}`)
-    
-    let inputElement: any = null
-
-    // Estratégia 1: Seletores CSS
-    for (const selector of selectors) {
-      try {
-        inputElement = await this.page.$(selector)
-        if (inputElement) {
-          console.log(`[ItauScraper] Campo ${fieldName} encontrado com seletor: ${selector}`)
-          break
-        }
-      } catch (e) {
-        // Continuar tentando
-      }
-    }
-
-    // Estratégia 2: Buscar por contexto (labels)
-    if (!inputElement) {
-      console.log(`[ItauScraper] Tentando encontrar ${fieldName} por contexto...`)
-      inputElement = await this.page.evaluateHandle((name) => {
-        const labels = Array.from(document.querySelectorAll('label'))
-        for (const label of labels) {
-          const text = label.textContent?.toLowerCase() || ''
-          if (text.includes(name.toLowerCase())) {
-            // Tentar input dentro da label
-            let input = label.querySelector('input')
-            if (input) return input
-            
-            // Tentar input após a label
-            input = label.nextElementSibling as HTMLInputElement
-            if (input?.tagName === 'INPUT') return input
-            
-            // Tentar por for/id
-            const forId = label.getAttribute('for')
-            if (forId) {
-              input = document.getElementById(forId) as HTMLInputElement
-              if (input) return input
-            }
-          }
-        }
-        
-        // Buscar inputs cujo parent contenha o nome do campo
-        const allInputs = Array.from(document.querySelectorAll('input[type="text"], input[type="number"], input[type="tel"], input[type="password"]'))
-        for (const input of allInputs) {
-          const parent = input.parentElement
-          const parentText = parent?.textContent?.toLowerCase() || ''
-          if (parentText.includes(name.toLowerCase())) {
-            return input
-          }
-        }
-        
-        return null
-      }, fieldName)
-    }
-
-    // Se não encontrou, capturar HTML para debug
-    if (!inputElement) {
-      const isNull = await this.page.evaluate((el) => el === null, inputElement).catch(() => true)
-      if (isNull) {
-        console.log(`[ItauScraper] ✗ Campo ${fieldName} NÃO encontrado!`)
-        
-        // Debug: listar todos os inputs
-        const allInputs = await this.page.$$eval('input', inputs => 
-          inputs.map(input => ({
-            type: input.type,
-            name: input.name,
-            id: input.id,
-            placeholder: input.placeholder,
-            ariaLabel: input.getAttribute('aria-label'),
-            visible: input.offsetParent !== null,
-            maxLength: input.maxLength,
-          }))
-        )
-        console.log(`[ItauScraper] Inputs visíveis na página:`, 
-          allInputs.filter(i => i.visible)
-        )
-        
-        throw new Error(`Campo ${fieldName} não encontrado`)
-      }
-    }
-
-    // Preencher o campo (estratégia robusta)
     try {
-      // 1. Remover atributos que impedem digitação
-      await this.page.evaluate((el) => {
-        if (el instanceof HTMLInputElement) {
-          el.removeAttribute('disabled')
-          el.removeAttribute('readonly')
-          el.disabled = false
-          el.readOnly = false
-        }
-      }, inputElement)
+      console.log(`[ItauScraper] Preenchendo campo ${fieldName} com estratégia robusta...`)
+      
+      // Estratégia 1: Remover disabled/readonly via JavaScript
+      await this.page!.evaluate((el) => {
+        el.removeAttribute('disabled')
+        el.removeAttribute('readonly')
+        ;(el as HTMLInputElement).disabled = false
+        ;(el as HTMLInputElement).readOnly = false
+      }, input)
 
-      // 2. Focar no campo
-      await inputElement.focus()
-      await new Promise(resolve => setTimeout(resolve, 200))
+      // Estratégia 2: Focar e limpar
+      await input.click({ clickCount: 3 }) // Selecionar tudo
+      await this.page!.keyboard.press('Backspace') // Limpar
 
-      // 3. Limpar campo
-      await this.page.evaluate((el) => {
-        if (el instanceof HTMLInputElement) {
-          el.value = ''
-        }
-      }, inputElement)
+      // Estratégia 3: Digitar com delay
+      await input.type(value, { delay: 100 })
 
-      // 4. Digitar com delay (simula digitação humana)
-      await inputElement.type(value, { delay: 100 })
-      await new Promise(resolve => setTimeout(resolve, 300))
+      // Estratégia 4: Verificar se valor foi setado
+      const actualValue = await this.page!.evaluate((el: any) => el.value, input)
+      if (actualValue !== value) {
+        console.warn(`[ItauScraper] Campo ${fieldName} não preenchido corretamente via .type(), tentando via JS.`)
+        // Fallback: Set via JavaScript
+        await this.page!.evaluate((el: any, val: string) => {
+          el.value = val
+          el.dispatchEvent(new Event('input', { bubbles: true }))
+          el.dispatchEvent(new Event('change', { bubbles: true }))
+          el.dispatchEvent(new Event('blur', { bubbles: true }))
+        }, input, value)
+      }
 
-      // 5. Validar se o valor foi setado
-      const actualValue = await this.page.evaluate((el) => {
-        return (el as HTMLInputElement).value
-      }, inputElement)
+      // Verificação final
+      const finalValue = await this.page!.evaluate((el: any) => el.value, input)
+      const success = finalValue === value || finalValue.includes(value.replace(/\D/g, ''))
+      console.log(`[ItauScraper] Campo ${fieldName} preenchido: ${success ? '✓' : '✗'} (valor final: '${finalValue}', esperado: '${value}')`)
 
-      if (actualValue === value) {
-        console.log(`[ItauScraper] ✓ Campo ${fieldName} preenchido: ${value}`)
-        return
-      } else {
-        console.log(`[ItauScraper] ⚠ Valor não setado corretamente. Tentando via JavaScript...`)
-        
-        // Fallback: setar via JavaScript
-        await this.page.evaluate((el, val) => {
-          if (el instanceof HTMLInputElement) {
-            el.value = val
-            el.dispatchEvent(new Event('input', { bubbles: true }))
-            el.dispatchEvent(new Event('change', { bubbles: true }))
-            el.dispatchEvent(new Event('blur', { bubbles: true }))
-          }
-        }, inputElement, value)
-
-        const finalValue = await this.page.evaluate((el) => {
-          return (el as HTMLInputElement).value
-        }, inputElement)
-
-        if (finalValue === value || finalValue.includes(value.replace(/\D/g, ''))) {
-          console.log(`[ItauScraper] ✓ Campo ${fieldName} preenchido via JavaScript: ${value}`)
-          return
-        } else {
-          throw new Error(`Erro ao preencher campo ${fieldName}: valor final '${finalValue}' diferente de '${value}'`)
-        }
+      if (!success) {
+        throw new Error(`Erro ao preencher campo ${fieldName}: Valor final '${finalValue}' diferente do esperado '${value}'`)
       }
     } catch (error) {
-      console.error(`[ItauScraper] Erro ao preencher ${fieldName}:`, error)
-      throw new Error(`Erro ao preencher campo ${fieldName}: ${error instanceof Error ? error.message : String(error)}`)
+      console.error(`[ItauScraper] Erro na estratégia robusta de preenchimento para ${fieldName}:`, error)
+      throw error
     }
   }
 
@@ -278,197 +89,430 @@ export class ItauScraper extends BaseScraper {
       throw new Error('Página não inicializada')
     }
 
-    try {
-      console.log('[ItauScraper] Iniciando login...')
-      console.log('[ItauScraper] Credenciais:', {
-        hasCpf: !!this.credentials.cpf,
-        hasCnpj: !!this.credentials.cnpj,
-        hasAgency: !!this.credentials.agency,
-        hasAccountNumber: !!this.credentials.accountNumber,
-        hasPassword: !!this.credentials.password,
-      })
+    console.log('[ItauScraper] Iniciando login...')
+    console.log('[ItauScraper] Credenciais:', {
+      hasCpf: !!this.credentials.cpf,
+      hasCnpj: !!this.credentials.cnpj,
+      hasAgency: !!this.credentials.agency,
+      hasAccountNumber: !!this.credentials.accountNumber,
+      hasAccountDigit: !!this.credentials.accountDigit,
+    })
 
-      // Navegar para página de login do Itaú
-      const loginUrl = 'https://www.itau.com.br/conta-corrente/acesse-sua-conta/'
-      
-      console.log('[ItauScraper] Navegando para:', loginUrl)
+    // Navegar para página de login do Itaú
+    // O Itaú pode ter diferentes URLs de login, vamos tentar a principal
+    const loginUrl = 'https://www.itau.com.br/conta-corrente/acesse-sua-conta/'
+    console.log('[ItauScraper] Navegando para:', loginUrl)
+    
+    try {
       await this.page.goto(loginUrl, {
-        waitUntil: 'networkidle2',
+        waitUntil: 'domcontentloaded', // Mais rápido que networkidle2
         timeout: 30000,
       })
+      
+      // Aguardar um pouco para JavaScript carregar
+      await new Promise(resolve => setTimeout(resolve, 3000))
+      
       console.log('[ItauScraper] Página carregada. URL atual:', this.page.url())
+      console.log('[ItauScraper] Título da página:', await this.page.title())
+    } catch (error) {
+      console.error('[ItauScraper] Erro ao navegar:', error)
+      throw new Error(`Falha ao carregar página de login: ${error instanceof Error ? error.message : String(error)}`)
+    }
 
-      // Aguardar JavaScript da página carregar
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      // Capturar screenshot para debug (base64 para logs)
+      try {
+        const screenshot = await this.page.screenshot({ encoding: 'base64', fullPage: false })
+        console.log('[ItauScraper] Screenshot capturado (base64, primeiros 100 chars):', screenshot.substring(0, 100))
+      } catch (e) {
+        console.log('[ItauScraper] Não foi possível capturar screenshot:', e)
+      }
+      
+      // Obter HTML da página para debug
+      try {
+        const pageContent = await this.page.content()
+        console.log('[ItauScraper] Tamanho do HTML:', pageContent.length, 'caracteres')
+        // Procurar por palavras-chave no HTML
+        const hasCpf = pageContent.toLowerCase().includes('cpf')
+        const hasAgencia = pageContent.toLowerCase().includes('agência') || pageContent.toLowerCase().includes('agencia')
+        const hasConta = pageContent.toLowerCase().includes('conta')
+        console.log('[ItauScraper] Palavras-chave no HTML:', { hasCpf, hasAgencia, hasConta })
+      } catch (e) {
+        console.log('[ItauScraper] Não foi possível obter HTML:', e)
+      }
 
+    // Aguardar campo de login aparecer
+    try {
+      // Seletores mais amplos para encontrar campos de login
+      const possibleSelectors = [
+        'input[name="agencia"]',
+        'input[name="conta"]',
+        'input[id*="agencia"]',
+        'input[id*="conta"]',
+        'input[placeholder*="CPF"]',
+        'input[placeholder*="CNPJ"]',
+        'input[placeholder*="cpf"]',
+        'input[placeholder*="cnpj"]',
+        'input[type="text"]',
+        '#agencia',
+        '#conta',
+        '#cpf',
+        '#cnpj',
+      ]
+      
+      console.log('[ItauScraper] Procurando campos de login...')
+      
+      // Tentar encontrar qualquer campo de input
+      let foundSelector = null
+      for (const selector of possibleSelectors) {
+        try {
+          await this.page.waitForSelector(selector, { timeout: 2000 })
+          foundSelector = selector
+          console.log('[ItauScraper] Campo encontrado:', selector)
+          break
+        } catch (e) {
+          // Continuar tentando
+        }
+      }
+      
+      if (!foundSelector) {
+        // Se não encontrou, listar todos os inputs da página para debug
+        const allInputs = await this.page.$$eval('input', (inputs) => {
+          return inputs.map((input: any) => ({
+            name: input.name || '',
+            id: input.id || '',
+            type: input.type || '',
+            placeholder: input.placeholder || '',
+            className: input.className || '',
+          }))
+        })
+        console.log('[ItauScraper] Inputs encontrados na página:', JSON.stringify(allInputs, null, 2))
+        throw new Error('Nenhum campo de login encontrado na página. Verifique se a URL está correta.')
+      }
+
+      // Preencher credenciais (usar novos campos)
       const { cpf, cnpj, agency, accountNumber, accountDigit, password } = this.credentials
 
-      // ==========================================
-      // PASSO 1: PREENCHER CPF
-      // ==========================================
-      if (cpf) {
-        await this.safeFillInput('CPF', cpf.replace(/\D/g, ''), [
-          'input[name="cpf"]',
-          'input[id*="cpf"]',
-          'input[placeholder*="CPF"]',
-          'input[aria-label*="CPF"]',
-          'input[type="text"][maxlength="11"]',
-          'input[type="tel"][maxlength="11"]',
-        ])
-      } else if (cnpj) {
-        await this.safeFillInput('CNPJ', cnpj.replace(/\D/g, ''), [
+      console.log('[ItauScraper] Preenchendo credenciais...')
+
+      // Login PJ: CNPJ
+      if (cnpj) {
+        console.log('[ItauScraper] Modo: PJ (CNPJ)')
+        const cnpjSelectors = [
           'input[name="cnpj"]',
+          'input[id="cnpj"]',
           'input[id*="cnpj"]',
           'input[placeholder*="CNPJ"]',
-          'input[aria-label*="CNPJ"]',
-          'input[type="text"][maxlength="14"]',
-        ])
-      } else {
-        throw new Error('CPF ou CNPJ não fornecido para login')
-      }
-
-      // ==========================================
-      // PASSO 2: CLICAR EM "CONTINUAR" E AGUARDAR
-      // ==========================================
-      const continuarClicked = await this.safeClick('continuar')
-      
-      if (continuarClicked) {
-        console.log('[ItauScraper] Aguardando navegação após Continuar...')
-        await Promise.race([
-          this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }),
-          new Promise(resolve => setTimeout(resolve, 5000))
-        ])
-        
-        console.log('[ItauScraper] Após Continuar - URL atual:', this.page.url())
-        
-        // Aguardar renderização completa
-        await new Promise(resolve => setTimeout(resolve, 3000))
-      }
-
-      // ==========================================
-      // DEBUG: LISTAR INPUTS VISÍVEIS
-      // ==========================================
-      const allInputs = await this.page.$$eval('input', inputs => 
-        inputs.map(input => ({
-          type: input.type,
-          name: input.name,
-          id: input.id,
-          placeholder: input.placeholder,
-          ariaLabel: input.getAttribute('aria-label'),
-          visible: input.offsetParent !== null,
-          maxLength: input.maxLength,
-        }))
-      )
-      console.log('[ItauScraper] Total de inputs:', allInputs.length)
-      console.log('[ItauScraper] Inputs VISÍVEIS:', 
-        allInputs.filter(i => i.visible)
-      )
-
-      // ==========================================
-      // PASSO 3: PREENCHER AGÊNCIA
-      // ==========================================
-      if (agency) {
-        await this.safeFillInput('Agência', agency.replace(/\D/g, ''), [
-          'input[name="agencia"]',
-          'input[name="ag"]',
-          'input[id*="agencia"]',
-          'input[id*="ag"]',
-          'input[placeholder*="Agência"]',
-          'input[placeholder*="agência"]',
-          'input[aria-label*="Agência"]',
-          '#agencia',
-          '#ag',
-          'input[type="text"][maxlength="4"]',
-          'input[type="number"][maxlength="4"]',
-        ])
-      }
-
-      // ==========================================
-      // PASSO 4: PREENCHER CONTA
-      // ==========================================
-      if (accountNumber) {
-        // Tentar diferentes formatos
-        const accountFormats = [
-          `${accountNumber.replace(/\D/g, '')}-${accountDigit?.replace(/\D/g, '') || ''}`,
-          `${accountNumber.replace(/\D/g, '')}${accountDigit?.replace(/\D/g, '') || ''}`,
-          accountNumber.replace(/\D/g, '')
+          'input[placeholder*="cnpj"]',
+          '#cnpj',
         ]
         
-        let accountFilled = false
-        for (const format of accountFormats) {
-          try {
-            await this.safeFillInput('Conta', format, [
-              'input[name="conta"]',
-              'input[name="account"]',
-              'input[id*="conta"]',
-              'input[id*="account"]',
-              'input[placeholder*="Conta"]',
-              'input[aria-label*="Conta"]',
-              '#conta',
-            ])
-            accountFilled = true
+        let cnpjInput = null
+        for (const selector of cnpjSelectors) {
+          cnpjInput = await this.page.$(selector)
+          if (cnpjInput) {
+            console.log('[ItauScraper] Campo CNPJ encontrado:', selector)
             break
-          } catch (e) {
-            console.log(`[ItauScraper] Formato '${format}' falhou, tentando próximo...`)
           }
         }
         
-        if (!accountFilled) {
-          throw new Error('Erro ao preencher campo Conta após tentar todos os formatos')
+        if (cnpjInput) {
+          await cnpjInput.type(cnpj.replace(/\D/g, ''), { delay: 100 })
+          console.log('[ItauScraper] CNPJ preenchido')
+        } else {
+          throw new Error('Campo CNPJ não encontrado na página de login')
         }
+      } 
+      // Login PF: CPF + Agência + Conta + Dígito
+      else if (cpf && agency && accountNumber && accountDigit) {
+        console.log('[ItauScraper] Modo: PF (CPF + Agência + Conta)')
+        
+        // Preencher CPF primeiro
+        const cpfSelectors = [
+          'input[name="cpf"]',
+          'input[id="cpf"]',
+          'input[id*="cpf"]',
+          'input[placeholder*="CPF"]',
+          'input[placeholder*="cpf"]',
+          '#cpf',
+        ]
+        
+        let cpfInput = null
+        for (const selector of cpfSelectors) {
+          cpfInput = await this.page.$(selector)
+          if (cpfInput) {
+            console.log('[ItauScraper] Campo CPF encontrado:', selector)
+            break
+          }
+        }
+        
+        if (cpfInput) {
+          await this._fillInputRobustly(cpfInput, cpf.replace(/\D/g, ''), 'CPF')
+          
+          // Clicar em "Continuar" ou aguardar próxima etapa
+          // Usar XPath para encontrar botão com texto "Continuar" (Puppeteer não suporta :has-text)
+          const continueButton = await this.page.evaluateHandle(() => {
+            // Procurar por botão ou link com texto "Continuar"
+            const buttons = Array.from(document.querySelectorAll('button, a, input[type="submit"]'))
+            return buttons.find((el: any) => {
+              const text = el.textContent?.toLowerCase() || el.value?.toLowerCase() || ''
+              return text.includes('continuar') || text.includes('próximo') || text.includes('avançar')
+            }) || null
+          })
+          
+          if (continueButton && continueButton.asElement()) {
+            console.log('[ItauScraper] Clicando em Continuar...')
+            await (continueButton.asElement() as any).click()
+            await this.waitForNavigation()
+            // Aguardar campos aparecerem dinamicamente
+            await new Promise(resolve => setTimeout(resolve, 3000))
+            console.log('[ItauScraper] URL após Continuar:', this.page.url())
+          } else {
+            // Tentar pressionar Enter ou aguardar campos aparecerem
+            console.log('[ItauScraper] Botão Continuar não encontrado, tentando Enter...')
+            await this.page.keyboard.press('Enter')
+            await new Promise(resolve => setTimeout(resolve, 3000))
+          }
+        } else {
+          throw new Error('Campo CPF não encontrado na página de login')
+        }
+
+        // Preencher Agência - COM RETRY E LOGS DETALHADOS
+        console.log('[ItauScraper] Procurando campo Agência...')
+        let agenciaInput = null
+        let attempts = 0
+        const maxAttempts = 10
+        
+        while (!agenciaInput && attempts < maxAttempts) {
+          attempts++
+          console.log(`[ItauScraper] Tentativa ${attempts}/${maxAttempts} de encontrar campo Agência...`)
+          
+          const agenciaSelectors = [
+            'input[name="agencia"]',
+            'input[name*="agencia"]',
+            'input[id="agencia"]',
+            'input[id*="agencia"]',
+            'input[placeholder*="agência"]',
+            'input[placeholder*="Agencia"]',
+            'input[placeholder*="AGÊNCIA"]',
+            'input[type="text"][name*="ag"]',
+            'input[type="number"][name*="ag"]',
+            '#agencia',
+            '[data-testid*="agencia"]',
+          ]
+          
+          for (const selector of agenciaSelectors) {
+            try {
+              agenciaInput = await this.page.$(selector)
+              if (agenciaInput) {
+                console.log('[ItauScraper] Campo Agência encontrado:', selector)
+                break
+              }
+            } catch (e) {
+              // Continuar
+            }
+          }
+          
+          if (!agenciaInput) {
+            // Log detalhado do que está na página
+            const pageInfo = await this.page.evaluate(() => {
+              const inputs = Array.from(document.querySelectorAll('input'))
+              return {
+                url: window.location.href,
+                inputCount: inputs.length,
+                inputs: inputs.map((inp: any) => ({
+                  name: inp.name || '',
+                  id: inp.id || '',
+                  placeholder: inp.placeholder || '',
+                  type: inp.type || '',
+                  visible: inp.offsetParent !== null,
+                })),
+              }
+            })
+            
+            console.log('[ItauScraper] Informações da página (tentativa', attempts, '):', JSON.stringify(pageInfo, null, 2))
+            
+            // Aguardar mais um pouco
+            await new Promise(resolve => setTimeout(resolve, 1000))
+          }
+        }
+        
+        if (agenciaInput) {
+          await this._fillInputRobustly(agenciaInput, agency.replace(/\D/g, ''), 'Agência')
+        } else {
+          // Log final detalhado antes de lançar erro
+          const finalPageInfo = await this.page.evaluate(() => {
+            return {
+              url: window.location.href,
+              title: document.title,
+              allInputs: Array.from(document.querySelectorAll('input')).map((inp: any) => ({
+                name: inp.name,
+                id: inp.id,
+                placeholder: inp.placeholder,
+                type: inp.type,
+                value: inp.value,
+              })),
+              bodyText: document.body.innerText.substring(0, 500),
+            }
+          })
+          console.error('[ItauScraper] ERRO: Campo Agência não encontrado. Informações da página:', JSON.stringify(finalPageInfo, null, 2))
+          throw new Error('Campo Agência não encontrado na página de login após múltiplas tentativas')
+        }
+
+        // Preencher Conta (número + dígito) - COM RETRY
+        console.log('[ItauScraper] Procurando campo Conta...')
+        let contaInput = null
+        let contaAttempts = 0
+        const maxContaAttempts = 5
+        
+        while (!contaInput && contaAttempts < maxContaAttempts) {
+          contaAttempts++
+          const contaSelectors = [
+            'input[name="conta"]',
+            'input[name*="conta"]',
+            'input[id="conta"]',
+            'input[id*="conta"]',
+            'input[placeholder*="conta"]',
+            'input[placeholder*="Conta"]',
+            'input[placeholder*="CONTA"]',
+            'input[type="text"][name*="conta"]',
+            'input[type="number"][name*="conta"]',
+            '#conta',
+            '[data-testid*="conta"]',
+          ]
+          
+          for (const selector of contaSelectors) {
+            try {
+              contaInput = await this.page.$(selector)
+              if (contaInput) {
+                console.log('[ItauScraper] Campo Conta encontrado:', selector)
+                break
+              }
+            } catch (e) {
+              // Continuar
+            }
+          }
+          
+          if (!contaInput) {
+            await new Promise(resolve => setTimeout(resolve, 1000))
+          }
+        }
+        
+        if (contaInput) {
+          // Tentar diferentes formatos: "12345-6" ou "123456"
+          const accountFormats = [
+            `${accountNumber.replace(/\D/g, '')}-${accountDigit.replace(/\D/g, '')}`,
+            `${accountNumber.replace(/\D/g, '')}${accountDigit.replace(/\D/g, '')}`,
+            accountNumber.replace(/\D/g, '')
+          ]
+          let accountFilled = false
+          
+          for (const format of accountFormats) {
+            try {
+              await this._fillInputRobustly(contaInput, format, 'Conta')
+              accountFilled = true
+              break
+            } catch (e) {
+              console.warn(`[ItauScraper] Formato '${format}' falhou, tentando próximo...`)
+              // Tentar próximo formato
+            }
+          }
+          
+          if (!accountFilled) {
+            // Log detalhado antes de lançar erro
+            const contaInfo = await this.page.evaluate((el: any) => {
+              return {
+                value: el.value,
+                disabled: el.disabled,
+                readonly: el.readOnly,
+                className: el.className,
+                name: el.name,
+                id: el.id,
+                placeholder: el.placeholder,
+              }
+            }, contaInput)
+            console.error('[ItauScraper] ERRO: Campo Conta não preenchido. Informações do campo:', JSON.stringify(contaInfo, null, 2))
+            throw new Error('Erro ao preencher campo Conta após tentar todos os formatos')
+          }
+        } else {
+          throw new Error('Campo Conta não encontrado na página de login')
+        }
+      } 
+      // Fallback: tentar usar username (compatibilidade)
+      else if (this.credentials.username) {
+        const username = this.credentials.username
+        const isCNPJ = username.replace(/\D/g, '').length === 14
+        
+        if (isCNPJ) {
+          const cnpjInput = await this.page.$('input[name="cnpj"], input[placeholder*="CNPJ"]')
+          if (cnpjInput) {
+            await cnpjInput.type(username.replace(/\D/g, ''), { delay: 100 })
+          }
+        } else {
+          const cpfInput = await this.page.$('input[name="cpf"], input[placeholder*="CPF"]')
+          if (cpfInput) {
+            await cpfInput.type(username.replace(/\D/g, ''), { delay: 100 })
+          }
+        }
+      } else {
+        throw new Error('Credenciais incompletas: é necessário CPF+Agência+Conta+Dígito (PF) ou CNPJ (PJ)')
       }
 
-      // ==========================================
-      // PASSO 5: PREENCHER DÍGITO (se aplicável)
-      // ==========================================
-      if (accountDigit) {
-        try {
-          await this.safeFillInput('Dígito', accountDigit.replace(/\D/g, ''), [
-            'input[name="digito"]',
-            'input[name="dv"]',
-            'input[id*="digito"]',
-            'input[id*="dv"]',
-            'input[placeholder*="Dígito"]',
-            'input[type="text"][maxlength="1"]',
-          ])
-        } catch (e) {
-          console.log('[ItauScraper] Campo Dígito não encontrado (pode não ser necessário)')
-        }
-      }
-
-      // ==========================================
-      // PASSO 6: PREENCHER SENHA
-      // ==========================================
-      await this.safeFillInput('Senha', password, [
+      // Preencher senha
+      console.log('[ItauScraper] Procurando campo de senha...')
+      const passwordSelectors = [
         'input[type="password"]',
         'input[name="senha"]',
-        'input[name="password"]',
         'input[id*="senha"]',
         'input[id*="password"]',
-        'input[aria-label*="Senha"]',
-      ])
-
-      // ==========================================
-      // PASSO 7: CLICAR EM "ENTRAR"
-      // ==========================================
-      const entrarClicked = await this.safeClick('entrar', [
-        'button[type="submit"]',
-        'input[type="submit"]',
-      ])
-
-      if (!entrarClicked) {
-        throw new Error('Botão Entrar não encontrado ou não clicável')
+        '#senha',
+        '#password',
+      ]
+      
+      let passwordInput = null
+      for (const selector of passwordSelectors) {
+        passwordInput = await this.page.$(selector)
+        if (passwordInput) {
+          console.log('[ItauScraper] Campo senha encontrado:', selector)
+          break
+        }
+      }
+      
+      if (passwordInput) {
+        await this._fillInputRobustly(passwordInput, password, 'Senha')
+      } else {
+        throw new Error('Campo senha não encontrado na página de login')
       }
 
-      // Aguardar navegação após login
-      console.log('[ItauScraper] Aguardando navegação após Entrar...')
-      await Promise.race([
-        this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }),
-        new Promise(resolve => setTimeout(resolve, 5000))
-      ])
+      // Clicar em entrar
+      console.log('[ItauScraper] Procurando botão de login...')
+      // Usar XPath/evaluate para encontrar botão com texto (Puppeteer não suporta :has-text)
+      const loginButton = await this.page.evaluateHandle(() => {
+        const buttons = Array.from(document.querySelectorAll('button, a, input[type="submit"]'))
+        return buttons.find((el: any) => {
+          const text = (el.textContent || el.value || '').toLowerCase()
+          return text.includes('entrar') || text.includes('acessar') || text.includes('login')
+        }) || null
+      })
+      
+      if (loginButton && loginButton.asElement()) {
+        console.log('[ItauScraper] Botão de login encontrado')
+        await (loginButton.asElement() as any).click()
+        await this.waitForNavigation()
+        console.log('[ItauScraper] Navegação após login. URL atual:', this.page.url())
+      } else {
+        console.log('[ItauScraper] Botão de login não encontrado, tentando pressionar Enter...')
+        await this.page.keyboard.press('Enter')
+        await new Promise(resolve => setTimeout(resolve, 2000))
+      }
 
-      console.log('[ItauScraper] Login concluído. URL atual:', this.page.url())
+      // Verificar se precisa de 2FA
+      if (this.credentials.twoFactorSecret) {
+        await this.handle2FA()
+      }
 
+      // Aguardar login completar
+      await this.page.waitForSelector('body', { timeout: 15000 })
+      
       // Verificar se está logado (não está mais na página de login)
       const currentUrl = this.page.url()
       if (currentUrl.includes('login') || currentUrl.includes('acesse-sua-conta')) {
@@ -476,20 +520,33 @@ export class ItauScraper extends BaseScraper {
       }
 
     } catch (error) {
-      console.error('[ItauScraper] Erro no login:', error)
-      
-      // Capturar estado da página para debug
-      try {
-        if (this.page) {
-          const url = this.page.url()
-          const title = await this.page.title()
-          console.log('[ItauScraper] Estado da página no erro:', { url, title })
-        }
-      } catch (e) {
-        console.log('[ItauScraper] Não foi possível capturar estado da página')
-      }
-      
       throw new Error(`Erro ao fazer login no Itaú: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  /**
+   * Lida com autenticação de dois fatores (2FA)
+   */
+  private async handle2FA(): Promise<void> {
+    if (!this.page) {
+      throw new Error('Página não inicializada')
+    }
+
+    // Aguardar página de 2FA
+    try {
+      await this.waitForSelector('input[type="text"][placeholder*="token"], input[type="text"][placeholder*="código"], input[name="token"]', 10000)
+      
+      // Por enquanto, lançar erro pedindo intervenção manual
+      // TODO: Implementar geração de token TOTP se necessário
+      throw new Error('2FA requerido - implementação de TOTP pendente')
+    } catch (error) {
+      // Se não encontrar campo de 2FA, pode não ser necessário
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      if (!errorMessage.includes('2FA requerido')) {
+        // Continua normalmente
+      } else {
+        throw error
+      }
     }
   }
 
@@ -524,32 +581,107 @@ export class ItauScraper extends BaseScraper {
         // NAVEGAR PARA FATURAS DE CARTÃO
         console.log('[ItauScraper] Navegando para faturas de cartão...')
         
-        // Clicar em "Cartões"
-        const cartoesClicked = await this.safeClick('cartões')
-        if (cartoesClicked) {
+        // Passo 1: Clicar em "Cartões" no menu
+        console.log('[ItauScraper] Procurando menu "Cartões"...')
+        const cartoesMenu = await this.page.evaluateHandle(() => {
+          const links = Array.from(document.querySelectorAll('a, button, nav a, .menu-item'))
+          return links.find((el: any) => {
+            const text = (el.textContent || '').toLowerCase()
+            return text.includes('cartão') || text.includes('cartoes') || (el.href && el.href.includes('cartao'))
+          }) || null
+        })
+        
+        if (cartoesMenu && cartoesMenu.asElement()) {
+          console.log('[ItauScraper] Menu Cartões encontrado, clicando...')
+          await (cartoesMenu.asElement() as any).click()
           await this.waitForNavigation()
           await new Promise(resolve => setTimeout(resolve, 2000))
         }
         
-        // Clicar em "Fatura" ou "Fatura e Limite"
-        await this.safeClick('fatura')
-        await this.waitForNavigation()
-        await new Promise(resolve => setTimeout(resolve, 2000))
+        // Passo 2: Clicar em "Fatura e Limite" ou "Fatura"
+        console.log('[ItauScraper] Procurando "Fatura e Limite" ou "Fatura"...')
+        const faturaLink = await this.page.evaluateHandle(() => {
+          const links = Array.from(document.querySelectorAll('a, button'))
+          return links.find((el: any) => {
+            const text = (el.textContent || '').toLowerCase()
+            return text.includes('fatura') || (el.href && el.href.includes('fatura'))
+          }) || null
+        })
         
-      } else {
-        // NAVEGAR PARA EXTRATOS DE CONTA CORRENTE
-        console.log('[ItauScraper] Navegando para extratos de conta corrente...')
-        
-        // Clicar em "Conta Corrente"
-        const contaClicked = await this.safeClick('conta corrente')
-        if (contaClicked) {
+        if (faturaLink && faturaLink.asElement()) {
+          console.log('[ItauScraper] Link Fatura encontrado, clicando...')
+          await (faturaLink.asElement() as any).click()
+          await this.waitForNavigation()
           await new Promise(resolve => setTimeout(resolve, 2000))
+        } else {
+          // Tentar URL direta
+          console.log('[ItauScraper] Tentando URL direta de faturas...')
+          await this.page.goto('https://www.itau.com.br/cartoes/fatura/', {
+            waitUntil: 'domcontentloaded',
+            timeout: 30000,
+          })
         }
         
-        // Clicar em "Saldo e Extrato" ou "Extrato"
-        await this.safeClick('extrato')
-        await this.waitForNavigation()
-        await new Promise(resolve => setTimeout(resolve, 2000))
+        // Passo 3: SELECIONAR CARTÃO (se houver múltiplos)
+        console.log('[ItauScraper] Verificando se há múltiplos cartões...')
+        const cardSelect = await this.page.$('select[name*="cartao"], select[id*="cartao"], select[name*="card"]')
+        if (cardSelect) {
+          console.log('[ItauScraper] Seletor de cartão encontrado - selecionando primeiro cartão')
+          // Selecionar primeira opção (ou permitir configurar qual cartão)
+          const options = await this.page.$$eval('select[name*="cartao"] option', (opts) => {
+            return opts.map((opt: any) => ({ value: opt.value, text: opt.textContent }))
+          })
+          if (options.length > 1) {
+            await this.page.select('select[name*="cartao"]', options[1].value) // Primeira opção válida (pula "Selecione")
+            await new Promise(resolve => setTimeout(resolve, 1000))
+          }
+        } else {
+          console.log('[ItauScraper] Apenas um cartão ou já selecionado')
+        }
+        
+      } else {
+        // NAVEGAR PARA EXTRATOS DE CONTA CORRENTE - MENU COMPLETO
+        console.log('[ItauScraper] Navegando para extratos de conta corrente...')
+        
+        // Passo 1: Clicar em "Conta Corrente" no menu
+        console.log('[ItauScraper] Procurando menu "Conta Corrente"...')
+        const contaCorrenteMenu = await this.page.evaluateHandle(() => {
+          const links = Array.from(document.querySelectorAll('a, button, nav a, .menu-item, li'))
+          return links.find((el: any) => {
+            const text = (el.textContent || '').toLowerCase()
+            return text.includes('conta corrente') || text.includes('conta-corrente')
+          }) || null
+        })
+        
+        if (contaCorrenteMenu && contaCorrenteMenu.asElement()) {
+          console.log('[ItauScraper] Menu Conta Corrente encontrado, clicando...')
+          await (contaCorrenteMenu.asElement() as any).click()
+          await new Promise(resolve => setTimeout(resolve, 1500))
+        }
+        
+        // Passo 2: Clicar em "Saldo e Extrato" ou "Extrato"
+        console.log('[ItauScraper] Procurando "Saldo e Extrato" ou "Extrato Novo"...')
+        const saldoExtratoLink = await this.page.evaluateHandle(() => {
+          const links = Array.from(document.querySelectorAll('a, button'))
+          return links.find((el: any) => {
+            const text = (el.textContent || '').toLowerCase()
+            return text.includes('saldo e extrato') || text.includes('extrato novo') || text.includes('extrato')
+          }) || null
+        })
+        
+        if (saldoExtratoLink && saldoExtratoLink.asElement()) {
+          console.log('[ItauScraper] Link Saldo e Extrato encontrado, clicando...')
+          await (saldoExtratoLink.asElement() as any).click()
+          await this.waitForNavigation()
+          await new Promise(resolve => setTimeout(resolve, 2000))
+        } else {
+          // Tentar navegar diretamente
+          console.log('[ItauScraper] Tentando URL direta de extratos...')
+          await this.page.goto('https://www.itau.com.br/conta-corrente/extrato/', {
+            waitUntil: 'domcontentloaded',
+            timeout: 30000,
+          })
+        }
       }
 
       console.log('[ItauScraper] URL após navegação:', this.page.url())
@@ -573,9 +705,9 @@ export class ItauScraper extends BaseScraper {
       
       console.log('[ItauScraper] Período desejado:', { startDateStr, endDateStr })
 
-      // Preencher data inicial
-      try {
-        await this.safeFillInput('Data inicial', startDateStr, [
+      // Procurar campos de data
+      const dateSelectors = {
+        start: [
           'input[name*="dataInicial"]',
           'input[name*="data_inicial"]',
           'input[id*="dataInicial"]',
@@ -584,14 +716,8 @@ export class ItauScraper extends BaseScraper {
           'input[placeholder*="De"]',
           '#dataInicial',
           '#data_inicial',
-        ])
-      } catch (e) {
-        console.log('[ItauScraper] Campo data inicial não encontrado - pode ser seleção por dropdown')
-      }
-
-      // Preencher data final
-      try {
-        await this.safeFillInput('Data final', endDateStr, [
+        ],
+        end: [
           'input[name*="dataFinal"]',
           'input[name*="data_final"]',
           'input[id*="dataFinal"]',
@@ -600,15 +726,66 @@ export class ItauScraper extends BaseScraper {
           'input[placeholder*="Até"]',
           '#dataFinal',
           '#data_final',
-        ])
-      } catch (e) {
+        ],
+      }
+
+      // Preencher data inicial
+      let startDateInput = null
+      for (const selector of dateSelectors.start) {
+        try {
+          startDateInput = await this.page.$(selector)
+          if (startDateInput) {
+            console.log('[ItauScraper] Campo data inicial encontrado:', selector)
+            break
+          }
+        } catch (e) {
+          // Continuar
+        }
+      }
+
+      if (startDateInput) {
+        // Limpar campo e preencher
+        await startDateInput.click({ clickCount: 3 }) // Selecionar tudo
+        await startDateInput.type(startDateStr, { delay: 100 })
+        console.log('[ItauScraper] Data inicial preenchida:', startDateStr)
+      } else {
+        console.log('[ItauScraper] Campo data inicial não encontrado - pode ser seleção por dropdown')
+      }
+
+      // Preencher data final
+      let endDateInput = null
+      for (const selector of dateSelectors.end) {
+        try {
+          endDateInput = await this.page.$(selector)
+          if (endDateInput) {
+            console.log('[ItauScraper] Campo data final encontrado:', selector)
+            break
+          }
+        } catch (e) {
+          // Continuar
+        }
+      }
+
+      if (endDateInput) {
+        await endDateInput.click({ clickCount: 3 })
+        await endDateInput.type(endDateStr, { delay: 100 })
+        console.log('[ItauScraper] Data final preenchida:', endDateStr)
+      } else {
         console.log('[ItauScraper] Campo data final não encontrado - pode ser seleção por dropdown')
       }
 
       // Clicar em "Buscar" ou "Consultar"
-      await this.safeClick('buscar')
-      await this.waitForNavigation()
-      await new Promise(resolve => setTimeout(resolve, 3000)) // Aguardar resultados carregarem
+      console.log('[ItauScraper] Procurando botão Buscar/Consultar...')
+      const buscarClicked = await this.safeClick('buscar')
+      
+      if (buscarClicked) {
+        await this.waitForNavigation()
+        await new Promise(resolve => setTimeout(resolve, 3000)) // Aguardar resultados carregarem
+      } else {
+        console.log('[ItauScraper] Botão buscar não encontrado - tentando Enter como fallback')
+        await this.page.keyboard.press('Enter')
+        await new Promise(resolve => setTimeout(resolve, 3000))
+      }
 
       // Aguardar tabela/lista de transações aparecer
       console.log('[ItauScraper] Aguardando transações carregarem...')
@@ -654,23 +831,18 @@ export class ItauScraper extends BaseScraper {
       throw new Error('Página não inicializada')
     }
 
-    console.log('[ItauScraper] Iniciando extração de transações...')
-    console.log('[ItauScraper] URL atual:', this.page.url())
-
     const transactions: ScrapingResult['transactions'] = []
 
     try {
-      // Aguardar transações carregarem
-      await new Promise(resolve => setTimeout(resolve, 2000))
-
       // Extrair transações da tabela de extratos
-      console.log('[ItauScraper] Procurando linhas de transações...')
-      const rows = await this.page.$$eval('table tbody tr, .extrato-item, [data-testid*="transaction"], .transacao-item', (elements) => {
+      // O Itaú geralmente tem uma estrutura de tabela
+      const rows = await this.page.$$eval('table tbody tr, .extrato-item, [data-testid*="transaction"]', (elements) => {
         return elements.map((row) => {
           const cells = row.querySelectorAll('td, .extrato-coluna')
           const text = row.textContent || ''
           
           // Tentar extrair data, descrição e valor
+          // Formato pode variar, então tentamos múltiplas estratégias
           let date = ''
           let description = ''
           let amount = 0
