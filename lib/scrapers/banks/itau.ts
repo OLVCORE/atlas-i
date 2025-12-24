@@ -405,39 +405,41 @@ export class ItauScraper extends BaseScraper {
         hasPassword: !!password
       })
 
-      // Navegar para página inicial do Itaú
-      const homeUrl = 'https://www.itau.com.br/'
-      console.log(`[ItauScraper] 🌐 Navegando para: ${homeUrl}`)
+      // Navegar DIRETO para página de login do Internet Banking
+      // URL direta evita navegação pela home que pode levar para páginas de marketing
+      const loginUrl = 'https://www.itau.com.br/conta-corrente/acesse-sua-conta/'
+      console.log(`[ItauScraper] 🌐 Navegando DIRETO para login: ${loginUrl}`)
       
-      await this.page.goto(homeUrl, {
+      await this.page.goto(loginUrl, {
         waitUntil: 'networkidle2',
         timeout: 30000
       })
       
-      console.log(`[ItauScraper] ✅ Página carregada: ${this.page.url()}`)
-      await new Promise(resolve => setTimeout(resolve, 3000))
-
-      // PASSO 0: CLICAR EM "ACESSAR CONTA"
-      console.log('[ItauScraper] 🔘 PASSO 0: Clicando em "Acessar conta"...')
-      const accessClicked = await this.clickAccessAccount()
+      const finalUrl = this.page.url()
+      console.log(`[ItauScraper] ✅ Página carregada: ${finalUrl}`)
       
-      if (!accessClicked) {
-        console.log('[ItauScraper] ⚠️ Botão "Acessar conta" não encontrado')
-        console.log('[ItauScraper] Tentando continuar mesmo assim...')
-      } else {
-        // Aguardar modal/página de login abrir
-        console.log('[ItauScraper] ⏳ Aguardando área de login carregar...')
-        await Promise.race([
-          this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {}),
-          new Promise(resolve => setTimeout(resolve, 5000))
-        ])
-        
-        console.log(`[ItauScraper] URL após clicar: ${this.page.url()}`)
-        await new Promise(resolve => setTimeout(resolve, 3000))
+      // Verificar se não caiu em página de erro
+      if (await this.isErrorPage()) {
+        throw new Error('Página de login redirecionou para erro 404')
       }
+      
+      await new Promise(resolve => setTimeout(resolve, 5000))
 
-      // Verificar se há iframes
+      // Verificar se há iframes (login pode estar em iframe)
       await this.checkForIframes()
+      
+      // Verificar se há campos de login na página
+      const hasLoginFields = await this.page.evaluate(() => {
+        const inputs = Array.from(document.querySelectorAll('input'))
+        const hasPasswordField = inputs.some(i => i.type === 'password')
+        const hasTextField = inputs.some(i => ['text', 'tel', 'number'].includes(i.type))
+        return hasPasswordField || hasTextField
+      })
+      
+      if (!hasLoginFields) {
+        console.log('[ItauScraper] ⚠️ Página sem campos de login detectados')
+        console.log('[ItauScraper] Tentando continuar mesmo assim...')
+      }
 
       // PASSO 1: CPF ou CNPJ
       if (cnpj) {
