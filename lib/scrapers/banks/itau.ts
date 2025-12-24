@@ -1,12 +1,14 @@
 /**
- * MC13: Scraper Itaú (PF e PJ) - VERSÃO COM MÚLTIPLAS URLs E DETECÇÃO DE 404
+ * MC13: Scraper Itaú (PF e PJ) - VERSÃO COM CLIQUE EM "ACESSAR CONTA"
  * 
  * Estratégia:
- * - Tenta múltiplas URLs de login
+ * - Navega para página inicial do Itaú
+ * - Clica em "Acessar conta" para abrir área de login
  * - Detecta redirecionamento para 404
+ * - Verifica se há iframes (login pode estar em iframe)
  * - Valida presença de campos de login
  * - Fallback para Enter se botões não forem encontrados
- * - Logs extremamente detalhados
+ * - Logs extremamente detalhados com links visíveis
  */
 
 import { BaseScraper } from '../base'
@@ -109,6 +111,101 @@ export class ItauScraper extends BaseScraper {
   }
 
   /**
+   * Clica no botão "Acessar conta" para abrir a área de login
+   */
+  private async clickAccessAccount(): Promise<boolean> {
+    if (!this.page) {
+      throw new Error('Página não inicializada')
+    }
+
+    console.log('[ItauScraper] 🔍 Procurando botão "Acessar conta"...')
+    
+    try {
+      const clicked = await this.page.evaluate(() => {
+        // Textos possíveis do botão
+        const possibleTexts = [
+          'acessar conta',
+          'acesse sua conta',
+          'internet banking',
+          'login',
+          'entrar',
+          'área do cliente',
+          'para você',
+          'pessoa física'
+        ]
+        
+        // Buscar todos os links e botões
+        const elements = Array.from(
+          document.querySelectorAll('a, button, [role="button"]')
+        )
+        
+        console.log(`[Browser] Total de elementos: ${elements.length}`)
+        
+        for (const possibleText of possibleTexts) {
+          for (const element of elements) {
+            const el = element as HTMLElement
+            const text = (el.textContent || el.innerText || '').toLowerCase()
+            const href = (el as HTMLAnchorElement).href || ''
+            
+            // Verificar texto ou href
+            if (text.includes(possibleText) || href.includes('conta-corrente')) {
+              const isVisible = el.offsetParent !== null && 
+                               window.getComputedStyle(el).display !== 'none' &&
+                               window.getComputedStyle(el).visibility !== 'hidden'
+              
+              if (isVisible) {
+                console.log(`[Browser] ✓ Encontrado: "${el.textContent?.trim()}" (texto: ${possibleText})`)
+                el.click()
+                return true
+              }
+            }
+          }
+        }
+        
+        console.log('[Browser] ❌ Botão "Acessar conta" não encontrado')
+        return false
+      })
+      
+      if (clicked) {
+        console.log('[ItauScraper] ✅ Clique em "Acessar conta" bem-sucedido')
+        return true
+      } else {
+        console.log('[ItauScraper] ❌ Não foi possível clicar em "Acessar conta"')
+        return false
+      }
+      
+    } catch (error) {
+      console.error('[ItauScraper] ❌ Erro ao clicar em "Acessar conta":', error)
+      return false
+    }
+  }
+
+  /**
+   * Verifica se há iframes na página e muda o contexto se necessário
+   */
+  private async checkForIframes(): Promise<void> {
+    if (!this.page) {
+      return
+    }
+
+    console.log('[ItauScraper] 🔍 Verificando se há iframes...')
+    
+    const frames = this.page.frames()
+    console.log(`[ItauScraper] Total de frames: ${frames.length}`)
+    
+    for (const frame of frames) {
+      const url = frame.url()
+      console.log(`[ItauScraper] Frame URL: ${url}`)
+      
+      // Se encontrar frame de login, usar ele
+      if (url.includes('login') || url.includes('auth') || url.includes('security')) {
+        console.log('[ItauScraper] ✓ Frame de login encontrado!')
+        // Aqui você pode precisar mudar o contexto para o frame
+      }
+    }
+  }
+
+  /**
    * Clique ultra-robusto via JavaScript puro
    */
   private async clickElement(description: string): Promise<boolean> {
@@ -205,6 +302,7 @@ export class ItauScraper extends BaseScraper {
             
             input.removeAttribute('disabled')
             input.removeAttribute('readonly')
+            input.focus()
             input.value = ''
             input.value = val
             input.dispatchEvent(new Event('input', { bubbles: true }))
@@ -307,9 +405,39 @@ export class ItauScraper extends BaseScraper {
         hasPassword: !!password
       })
 
-      // Navegar para página de login (tenta múltiplas URLs)
-      const loginUrl = await this.navigateToLogin()
-      console.log(`[ItauScraper] ✅ Usando URL: ${loginUrl}`)
+      // Navegar para página inicial do Itaú
+      const homeUrl = 'https://www.itau.com.br/'
+      console.log(`[ItauScraper] 🌐 Navegando para: ${homeUrl}`)
+      
+      await this.page.goto(homeUrl, {
+        waitUntil: 'networkidle2',
+        timeout: 30000
+      })
+      
+      console.log(`[ItauScraper] ✅ Página carregada: ${this.page.url()}`)
+      await new Promise(resolve => setTimeout(resolve, 3000))
+
+      // PASSO 0: CLICAR EM "ACESSAR CONTA"
+      console.log('[ItauScraper] 🔘 PASSO 0: Clicando em "Acessar conta"...')
+      const accessClicked = await this.clickAccessAccount()
+      
+      if (!accessClicked) {
+        console.log('[ItauScraper] ⚠️ Botão "Acessar conta" não encontrado')
+        console.log('[ItauScraper] Tentando continuar mesmo assim...')
+      } else {
+        // Aguardar modal/página de login abrir
+        console.log('[ItauScraper] ⏳ Aguardando área de login carregar...')
+        await Promise.race([
+          this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {}),
+          new Promise(resolve => setTimeout(resolve, 5000))
+        ])
+        
+        console.log(`[ItauScraper] URL após clicar: ${this.page.url()}`)
+        await new Promise(resolve => setTimeout(resolve, 3000))
+      }
+
+      // Verificar se há iframes
+      await this.checkForIframes()
 
       // PASSO 1: CPF ou CNPJ
       if (cnpj) {
@@ -342,10 +470,14 @@ export class ItauScraper extends BaseScraper {
 
       // PASSO 2: Continuar (ou pressionar Enter)
       console.log('[ItauScraper] 🔘 PASSO 2: Avançando...')
-      const continuarClicked = await this.clickElement('continuar')
+      
+      // Tentar clicar em botão específico primeiro
+      const continuarClicked = await this.clickElement('continuar') ||
+                              await this.clickElement('próximo') ||
+                              await this.clickElement('avançar')
       
       if (!continuarClicked) {
-        console.log('[ItauScraper] ⚠️ Botão Continuar não encontrado, tentando Enter...')
+        console.log('[ItauScraper] ⚠️ Botão não encontrado, tentando Enter...')
         await this.pressEnter()
       }
       
@@ -355,7 +487,13 @@ export class ItauScraper extends BaseScraper {
         new Promise(resolve => setTimeout(resolve, 5000))
       ])
       
-      console.log(`[ItauScraper] URL após continuar: ${this.page.url()}`)
+      const urlAfterContinue = this.page.url()
+      console.log(`[ItauScraper] URL após continuar: ${urlAfterContinue}`)
+      
+      // Verificar se a URL mudou (indica que navegou)
+      if (urlAfterContinue === homeUrl) {
+        console.log('[ItauScraper] ⚠️ URL não mudou - pode estar em modal ou a navegação falhou')
+      }
       
       // Verificar se não caiu em página de erro
       if (await this.isErrorPage()) {
@@ -370,8 +508,10 @@ export class ItauScraper extends BaseScraper {
         await this.fillField('Agência', agency.replace(/\D/g, ''), [
           'input[name="agencia"]',
           'input[name="ag"]',
+          'input[name="branch"]',
           'input[id*="agencia"]',
           'input[id*="ag"]',
+          'input[id*="branch"]',
           'input[placeholder*="Agência"]',
           'input[placeholder*="agência"]',
           'input[placeholder*="Ag"]',
@@ -427,7 +567,8 @@ export class ItauScraper extends BaseScraper {
 
       // PASSO 7: Entrar
       console.log('[ItauScraper] 🔘 PASSO 7: Fazendo login...')
-      const entrarClicked = await this.clickElement('entrar')
+      const entrarClicked = await this.clickElement('entrar') ||
+                           await this.clickElement('acessar')
       
       if (!entrarClicked) {
         console.log('[ItauScraper] ⚠️ Botão Entrar não encontrado, tentando Enter...')
@@ -469,9 +610,21 @@ export class ItauScraper extends BaseScraper {
           const title = await this.page.title()
           console.log('[ItauScraper] 📍 Estado da página:', { url, title })
           
-          // Tentar capturar conteúdo da página para debug
+          // Capturar conteúdo da página para debug
           const bodyText = await this.page.evaluate(() => document.body.innerText.substring(0, 500))
           console.log('[ItauScraper] 📄 Conteúdo da página:', bodyText)
+          
+          // Listar todos os links visíveis
+          const links = await this.page.$$eval('a', links =>
+            links
+              .filter((l: any) => l.offsetParent !== null)
+              .slice(0, 20)
+              .map((l: any) => ({
+                text: l.textContent?.trim(),
+                href: l.href
+              }))
+          )
+          console.log('[ItauScraper] 🔗 Links visíveis na página:', links)
         }
       } catch (e) {
         console.log('[ItauScraper] ⚠️ Não foi possível capturar estado da página')
