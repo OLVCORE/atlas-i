@@ -1,15 +1,12 @@
 /**
- * MC13: Scraper Itaú (PF e PJ) - VERSÃO ULTRA-ROBUSTA
+ * MC13: Scraper Itaú (PF e PJ) - VERSÃO COM MÚLTIPLAS URLs E DETECÇÃO DE 404
  * 
- * Estratégia: JavaScript puro via page.evaluate()
- * - Sem evaluateHandle (pode retornar null)
- * - Validação tripla (existência, visibilidade, tipo)
+ * Estratégia:
+ * - Tenta múltiplas URLs de login
+ * - Detecta redirecionamento para 404
+ * - Valida presença de campos de login
+ * - Fallback para Enter se botões não forem encontrados
  * - Logs extremamente detalhados
- * 
- * Suporta:
- * - Conta corrente
- * - Cartão de crédito
- * - Investimentos
  */
 
 import { BaseScraper } from '../base'
@@ -21,8 +18,98 @@ export class ItauScraper extends BaseScraper {
   }
 
   /**
+   * URLs de login do Itaú para tentar (em ordem de prioridade)
+   */
+  private readonly LOGIN_URLS = [
+    'https://www.itau.com.br/',
+    'https://banco.itau.com.br/',
+    'https://www.itau.com.br/conta-corrente/',
+    'https://internetbanking.itau.com.br/',
+  ]
+
+  /**
+   * Detecta se a página é um erro 404 ou similar
+   */
+  private async isErrorPage(): Promise<boolean> {
+    if (!this.page) {
+      return false
+    }
+
+    const url = this.page.url().toLowerCase()
+    const title = (await this.page.title()).toLowerCase()
+    
+    const isError = url.includes('/404') || 
+                   url.includes('erro') ||
+                   url.includes('error') ||
+                   title.includes('404') ||
+                   title.includes('não encontrad') ||
+                   title.includes('error')
+    
+    if (isError) {
+      console.log('[ItauScraper] ⚠️ PÁGINA DE ERRO DETECTADA!')
+      console.log('[ItauScraper] URL:', url)
+      console.log('[ItauScraper] Título:', title)
+    }
+    
+    return isError
+  }
+
+  /**
+   * Tenta navegar para a página de login usando múltiplas URLs
+   */
+  private async navigateToLogin(): Promise<string> {
+    if (!this.page) {
+      throw new Error('Página não inicializada')
+    }
+
+    console.log('[ItauScraper] 🔍 Tentando encontrar página de login...')
+    
+    for (const loginUrl of this.LOGIN_URLS) {
+      try {
+        console.log(`[ItauScraper] 🌐 Tentando: ${loginUrl}`)
+        
+        await this.page.goto(loginUrl, {
+          waitUntil: 'networkidle2',
+          timeout: 30000
+        })
+        
+        const finalUrl = this.page.url()
+        console.log(`[ItauScraper] ✅ Carregado: ${finalUrl}`)
+        
+        // Verificar se não é página de erro
+        if (await this.isErrorPage()) {
+          console.log('[ItauScraper] ❌ Página de erro, tentando próxima URL...')
+          continue
+        }
+        
+        // Aguardar página carregar
+        await new Promise(resolve => setTimeout(resolve, 3000))
+        
+        // Verificar se há campos de login na página
+        const hasLoginFields = await this.page.evaluate(() => {
+          const inputs = Array.from(document.querySelectorAll('input'))
+          const hasPasswordField = inputs.some(i => i.type === 'password')
+          const hasTextField = inputs.some(i => ['text', 'tel', 'number'].includes(i.type))
+          return hasPasswordField || hasTextField
+        })
+        
+        if (hasLoginFields) {
+          console.log('[ItauScraper] ✅ Página de login encontrada!')
+          return finalUrl
+        } else {
+          console.log('[ItauScraper] ⚠️ Página sem campos de login, tentando próxima...')
+        }
+        
+      } catch (error) {
+        console.log(`[ItauScraper] ❌ Erro ao acessar ${loginUrl}:`, error)
+      }
+    }
+    
+    throw new Error('Não foi possível acessar nenhuma página de login do Itaú')
+  }
+
+  /**
    * Clique ultra-robusto via JavaScript puro
-   * Executa no contexto do browser, mais confiável
    */
   private async clickElement(description: string): Promise<boolean> {
     if (!this.page) {
@@ -33,14 +120,12 @@ export class ItauScraper extends BaseScraper {
     
     try {
       const clicked = await this.page.evaluate((desc) => {
-        // Buscar todos os elementos clicáveis
         const elements = Array.from(
           document.querySelectorAll('button, a, input[type="submit"], [role="button"]')
         )
         
         console.log(`[Browser] Total de elementos clicáveis: ${elements.length}`)
         
-        // Filtrar por texto
         const matches = elements.filter((el: any) => {
           const text = (el.textContent || el.value || el.innerText || '').toLowerCase()
           return text.includes(desc.toLowerCase())
@@ -49,20 +134,14 @@ export class ItauScraper extends BaseScraper {
         console.log(`[Browser] Elementos que contêm "${desc}": ${matches.length}`)
         
         if (matches.length === 0) {
-          console.log(`[Browser] ❌ Nenhum elemento encontrado com texto "${desc}"`)
           return false
         }
         
-        // Pegar o primeiro visível
         for (const element of matches) {
           const el = element as HTMLElement
-          
-          // Verificar visibilidade
-          const style = window.getComputedStyle(el)
           const isVisible = el.offsetParent !== null && 
-                           style.display !== 'none' &&
-                           style.visibility !== 'hidden' &&
-                           style.opacity !== '0'
+                           window.getComputedStyle(el).display !== 'none' &&
+                           window.getComputedStyle(el).visibility !== 'hidden'
           
           if (isVisible) {
             console.log(`[Browser] ✓ Elemento visível encontrado, clicando...`)
@@ -71,7 +150,6 @@ export class ItauScraper extends BaseScraper {
           }
         }
         
-        console.log(`[Browser] ❌ Nenhum elemento visível encontrado`)
         return false
         
       }, description)
@@ -91,14 +169,26 @@ export class ItauScraper extends BaseScraper {
   }
 
   /**
+   * Simula pressionar Enter no campo
+   */
+  private async pressEnter(): Promise<void> {
+    if (!this.page) {
+      throw new Error('Página não inicializada')
+    }
+
+    console.log('[ItauScraper] ⌨️ Pressionando Enter...')
+    await this.page.keyboard.press('Enter')
+    await new Promise(resolve => setTimeout(resolve, 1000))
+  }
+
+  /**
    * Preenchimento ultra-robusto via JavaScript puro
-   * Remove disabled/readonly e dispara eventos corretamente
    */
   private async fillField(
     fieldName: string,
     value: string,
     selectors: string[]
-  ): Promise<void> {
+  ): Promise<boolean> {
     if (!this.page) {
       throw new Error('Página não inicializada')
     }
@@ -109,31 +199,20 @@ export class ItauScraper extends BaseScraper {
       const filled = await this.page.evaluate((name, val, sels) => {
         // Estratégia 1: Tentar seletores CSS
         for (const selector of sels) {
-          try {
-            const input = document.querySelector(selector) as HTMLInputElement
-            if (input && input.offsetParent !== null) {
-              console.log(`[Browser] ✓ Campo encontrado via seletor: ${selector}`)
-              
-              // Remover atributos que impedem digitação
-              input.removeAttribute('disabled')
-              input.removeAttribute('readonly')
-              ;(input as any).disabled = false
-              ;(input as any).readOnly = false
-              
-              // Limpar e preencher
-              input.value = ''
-              input.value = val
-              
-              // Disparar eventos
-              input.dispatchEvent(new Event('input', { bubbles: true }))
-              input.dispatchEvent(new Event('change', { bubbles: true }))
-              input.dispatchEvent(new Event('blur', { bubbles: true }))
-              
-              console.log(`[Browser] ✓ Campo preenchido: ${name} = ${val}`)
-              return true
-            }
-          } catch (e) {
-            // Continuar tentando próximo seletor
+          const input = document.querySelector(selector) as HTMLInputElement
+          if (input && input.offsetParent !== null) {
+            console.log(`[Browser] ✓ Campo encontrado via seletor: ${selector}`)
+            
+            input.removeAttribute('disabled')
+            input.removeAttribute('readonly')
+            input.value = ''
+            input.value = val
+            input.dispatchEvent(new Event('input', { bubbles: true }))
+            input.dispatchEvent(new Event('change', { bubbles: true }))
+            input.dispatchEvent(new Event('blur', { bubbles: true }))
+            
+            console.log(`[Browser] ✓ Campo preenchido: ${name} = ${val}`)
+            return true
           }
         }
         
@@ -142,15 +221,12 @@ export class ItauScraper extends BaseScraper {
         for (const label of labels) {
           const text = label.textContent?.toLowerCase() || ''
           if (text.includes(name.toLowerCase())) {
-            // Tentar input dentro da label
             let input = label.querySelector('input') as HTMLInputElement
             
-            // Tentar input após a label
             if (!input) {
               input = label.nextElementSibling as HTMLInputElement
             }
             
-            // Tentar por for/id
             if (!input) {
               const forId = label.getAttribute('for')
               if (forId) {
@@ -163,8 +239,6 @@ export class ItauScraper extends BaseScraper {
               
               input.removeAttribute('disabled')
               input.removeAttribute('readonly')
-              ;(input as any).disabled = false
-              ;(input as any).readOnly = false
               input.value = ''
               input.value = val
               input.dispatchEvent(new Event('input', { bubbles: true }))
@@ -184,6 +258,7 @@ export class ItauScraper extends BaseScraper {
       
       if (filled) {
         console.log(`[ItauScraper] ✅ Campo preenchido com sucesso: ${fieldName}`)
+        return true
       } else {
         console.log(`[ItauScraper] ❌ Falha ao preencher campo: ${fieldName}`)
         
@@ -232,17 +307,9 @@ export class ItauScraper extends BaseScraper {
         hasPassword: !!password
       })
 
-      // Navegar para página de login
-      const loginUrl = 'https://www.itau.com.br/conta-corrente/acesse-sua-conta/'
-      console.log(`[ItauScraper] 🌐 Navegando para: ${loginUrl}`)
-      
-      await this.page.goto(loginUrl, {
-        waitUntil: 'networkidle2',
-        timeout: 30000
-      })
-      
-      console.log(`[ItauScraper] ✅ Página carregada: ${this.page.url()}`)
-      await new Promise(resolve => setTimeout(resolve, 3000))
+      // Navegar para página de login (tenta múltiplas URLs)
+      const loginUrl = await this.navigateToLogin()
+      console.log(`[ItauScraper] ✅ Usando URL: ${loginUrl}`)
 
       // PASSO 1: CPF ou CNPJ
       if (cnpj) {
@@ -250,6 +317,7 @@ export class ItauScraper extends BaseScraper {
         await this.fillField('CNPJ', cnpj.replace(/\D/g, ''), [
           'input[name="cnpj"]',
           'input[id*="cnpj"]',
+          'input[id*="CNPJ"]',
           'input[placeholder*="CNPJ"]',
           'input[placeholder*="cnpj"]'
         ])
@@ -259,32 +327,42 @@ export class ItauScraper extends BaseScraper {
         await this.fillField('CPF', cpf.replace(/\D/g, ''), [
           'input[name="cpf"]',
           'input[id*="cpf"]',
+          'input[id*="CPF"]',
           'input[placeholder*="CPF"]',
+          'input[placeholder*="cpf"]',
           'input[type="text"][maxlength="11"]',
-          'input[type="tel"][maxlength="11"]'
+          'input[type="tel"][maxlength="11"]',
+          'input[type="tel"]',
+          'input[type="text"]'
         ])
         await new Promise(resolve => setTimeout(resolve, 1000))
       } else {
         throw new Error('CPF ou CNPJ não fornecido')
       }
 
-      // PASSO 2: Continuar
-      console.log('[ItauScraper] 🔘 PASSO 2: Clicando em Continuar')
+      // PASSO 2: Continuar (ou pressionar Enter)
+      console.log('[ItauScraper] 🔘 PASSO 2: Avançando...')
       const continuarClicked = await this.clickElement('continuar')
       
-      if (continuarClicked) {
-        console.log('[ItauScraper] ⏳ Aguardando navegação...')
-        await Promise.race([
-          this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }),
-          new Promise(resolve => setTimeout(resolve, 5000))
-        ])
-        console.log(`[ItauScraper] ✅ Após Continuar: ${this.page.url()}`)
-        await new Promise(resolve => setTimeout(resolve, 3000))
-      } else {
+      if (!continuarClicked) {
         console.log('[ItauScraper] ⚠️ Botão Continuar não encontrado, tentando Enter...')
-        await this.page.keyboard.press('Enter')
-        await new Promise(resolve => setTimeout(resolve, 3000))
+        await this.pressEnter()
       }
+      
+      console.log('[ItauScraper] ⏳ Aguardando navegação...')
+      await Promise.race([
+        this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {}),
+        new Promise(resolve => setTimeout(resolve, 5000))
+      ])
+      
+      console.log(`[ItauScraper] URL após continuar: ${this.page.url()}`)
+      
+      // Verificar se não caiu em página de erro
+      if (await this.isErrorPage()) {
+        throw new Error('Redirecionado para página de erro após preencher CPF')
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 3000))
 
       // PASSO 3: Agência (apenas para PF)
       if (agency && cpf) {
@@ -293,9 +371,12 @@ export class ItauScraper extends BaseScraper {
           'input[name="agencia"]',
           'input[name="ag"]',
           'input[id*="agencia"]',
+          'input[id*="ag"]',
           'input[placeholder*="Agência"]',
           'input[placeholder*="agência"]',
-          'input[type="text"][maxlength="4"]'
+          'input[placeholder*="Ag"]',
+          'input[type="text"][maxlength="4"]',
+          'input[type="number"][maxlength="4"]'
         ])
         await new Promise(resolve => setTimeout(resolve, 1000))
       }
@@ -303,43 +384,27 @@ export class ItauScraper extends BaseScraper {
       // PASSO 4: Conta (apenas para PF)
       if (accountNumber && cpf) {
         console.log('[ItauScraper] 📝 PASSO 4: Preenchendo Conta')
-        // Tentar diferentes formatos
-        const accountFormats = [
-          `${accountNumber.replace(/\D/g, '')}-${accountDigit?.replace(/\D/g, '') || ''}`,
-          `${accountNumber.replace(/\D/g, '')}${accountDigit?.replace(/\D/g, '') || ''}`,
-          accountNumber.replace(/\D/g, '')
-        ]
-        
-        let accountFilled = false
-        for (const format of accountFormats) {
-          try {
-            await this.fillField('Conta', format, [
-              'input[name="conta"]',
-              'input[id*="conta"]',
-              'input[placeholder*="Conta"]',
-              'input[placeholder*="conta"]'
-            ])
-            accountFilled = true
-            break
-          } catch (e) {
-            console.log(`[ItauScraper] ⚠️ Formato '${format}' falhou, tentando próximo...`)
-          }
-        }
-        
-        if (!accountFilled) {
-          throw new Error('Erro ao preencher campo Conta após tentar todos os formatos')
-        }
+        await this.fillField('Conta', accountNumber.replace(/\D/g, ''), [
+          'input[name="conta"]',
+          'input[name="account"]',
+          'input[id*="conta"]',
+          'input[id*="account"]',
+          'input[placeholder*="Conta"]',
+          'input[placeholder*="conta"]'
+        ])
         await new Promise(resolve => setTimeout(resolve, 1000))
       }
 
-      // PASSO 5: Dígito (apenas para PF, opcional)
+      // PASSO 5: Dígito (opcional)
       if (accountDigit && cpf) {
-        console.log('[ItauScraper] 📝 PASSO 5: Preenchendo Dígito')
+        console.log('[ItauScraper] 📝 PASSO 5: Tentando preencher Dígito...')
         try {
           await this.fillField('Dígito', accountDigit.replace(/\D/g, ''), [
             'input[name="digito"]',
             'input[name="dv"]',
             'input[id*="digito"]',
+            'input[id*="dv"]',
+            'input[placeholder*="Dígito"]',
             'input[type="text"][maxlength="1"]'
           ])
         } catch (e) {
@@ -354,24 +419,31 @@ export class ItauScraper extends BaseScraper {
         'input[type="password"]',
         'input[name="senha"]',
         'input[name="password"]',
-        'input[id*="senha"]'
+        'input[id*="senha"]',
+        'input[id*="password"]',
+        'input[id*="pass"]'
       ])
       await new Promise(resolve => setTimeout(resolve, 1000))
 
       // PASSO 7: Entrar
-      console.log('[ItauScraper] 🔘 PASSO 7: Clicando em Entrar')
+      console.log('[ItauScraper] 🔘 PASSO 7: Fazendo login...')
       const entrarClicked = await this.clickElement('entrar')
       
       if (!entrarClicked) {
         console.log('[ItauScraper] ⚠️ Botão Entrar não encontrado, tentando Enter...')
-        await this.page.keyboard.press('Enter')
-        await new Promise(resolve => setTimeout(resolve, 2000))
-      } else {
-        console.log('[ItauScraper] ⏳ Aguardando login completar...')
-        await Promise.race([
-          this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }),
-          new Promise(resolve => setTimeout(resolve, 5000))
-        ])
+        await this.pressEnter()
+      }
+
+      console.log('[ItauScraper] ⏳ Aguardando login completar...')
+      await Promise.race([
+        this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {}),
+        new Promise(resolve => setTimeout(resolve, 5000))
+      ])
+
+      // Verificar se login foi bem-sucedido
+      const finalUrl = this.page.url()
+      if (await this.isErrorPage()) {
+        throw new Error('Login falhou - redirecionado para página de erro')
       }
 
       // Verificar se precisa de 2FA
@@ -380,13 +452,12 @@ export class ItauScraper extends BaseScraper {
       }
 
       // Verificar se está logado
-      const currentUrl = this.page.url()
-      if (currentUrl.includes('login') || currentUrl.includes('acesse-sua-conta')) {
+      if (finalUrl.includes('login') || finalUrl.includes('acesse-sua-conta')) {
         throw new Error('Falha no login - ainda na página de login')
       }
 
       console.log('[ItauScraper] ========================================')
-      console.log(`[ItauScraper] ✅ LOGIN CONCLUÍDO: ${this.page.url()}`)
+      console.log(`[ItauScraper] ✅ LOGIN CONCLUÍDO: ${finalUrl}`)
       console.log('[ItauScraper] ========================================')
 
     } catch (error) {
@@ -397,6 +468,10 @@ export class ItauScraper extends BaseScraper {
           const url = this.page.url()
           const title = await this.page.title()
           console.log('[ItauScraper] 📍 Estado da página:', { url, title })
+          
+          // Tentar capturar conteúdo da página para debug
+          const bodyText = await this.page.evaluate(() => document.body.innerText.substring(0, 500))
+          console.log('[ItauScraper] 📄 Conteúdo da página:', bodyText)
         }
       } catch (e) {
         console.log('[ItauScraper] ⚠️ Não foi possível capturar estado da página')
