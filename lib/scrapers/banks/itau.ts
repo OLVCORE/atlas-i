@@ -23,55 +23,206 @@ export class ItauScraper extends BaseScraper {
       throw new Error('Página não inicializada')
     }
 
-    // Navegar para página de login
-    await this.page.goto('https://www.itau.com.br/conta-corrente/acesse-sua-conta/', {
-      waitUntil: 'networkidle2',
+    console.log('[ItauScraper] Iniciando login...')
+    console.log('[ItauScraper] Credenciais:', {
+      hasCpf: !!this.credentials.cpf,
+      hasCnpj: !!this.credentials.cnpj,
+      hasAgency: !!this.credentials.agency,
+      hasAccountNumber: !!this.credentials.accountNumber,
+      hasAccountDigit: !!this.credentials.accountDigit,
     })
 
-    // Aguardar campo de agência/conta ou CPF/CNPJ
+    // Navegar para página de login do Itaú
+    const loginUrl = 'https://www.itau.com.br/conta-corrente/acesse-sua-conta/'
+    console.log('[ItauScraper] Navegando para:', loginUrl)
+    
+    await this.page.goto(loginUrl, {
+      waitUntil: 'networkidle2',
+      timeout: 30000,
+    })
+
+    console.log('[ItauScraper] Página carregada. URL atual:', this.page.url())
+
+    // Capturar screenshot para debug
     try {
-      // Tentar encontrar campo de login (pode variar)
-      const loginSelector = 'input[name="agencia"], input[name="conta"], input[type="text"][placeholder*="CPF"], input[type="text"][placeholder*="CNPJ"]'
-      await this.waitForSelector(loginSelector, 10000)
+      await this.page.screenshot({ path: '/tmp/itau-login-1.png', fullPage: true })
+      console.log('[ItauScraper] Screenshot salvo: /tmp/itau-login-1.png')
+    } catch (e) {
+      console.log('[ItauScraper] Não foi possível salvar screenshot (normal em produção)')
+    }
+
+    // Aguardar campo de login aparecer
+    try {
+      // Seletores mais amplos para encontrar campos de login
+      const possibleSelectors = [
+        'input[name="agencia"]',
+        'input[name="conta"]',
+        'input[id*="agencia"]',
+        'input[id*="conta"]',
+        'input[placeholder*="CPF"]',
+        'input[placeholder*="CNPJ"]',
+        'input[placeholder*="cpf"]',
+        'input[placeholder*="cnpj"]',
+        'input[type="text"]',
+        '#agencia',
+        '#conta',
+        '#cpf',
+        '#cnpj',
+      ]
+      
+      console.log('[ItauScraper] Procurando campos de login...')
+      
+      // Tentar encontrar qualquer campo de input
+      let foundSelector = null
+      for (const selector of possibleSelectors) {
+        try {
+          await this.page.waitForSelector(selector, { timeout: 2000 })
+          foundSelector = selector
+          console.log('[ItauScraper] Campo encontrado:', selector)
+          break
+        } catch (e) {
+          // Continuar tentando
+        }
+      }
+      
+      if (!foundSelector) {
+        // Se não encontrou, listar todos os inputs da página para debug
+        const allInputs = await this.page.$$eval('input', (inputs) => {
+          return inputs.map((input: any) => ({
+            name: input.name || '',
+            id: input.id || '',
+            type: input.type || '',
+            placeholder: input.placeholder || '',
+            className: input.className || '',
+          }))
+        })
+        console.log('[ItauScraper] Inputs encontrados na página:', JSON.stringify(allInputs, null, 2))
+        throw new Error('Nenhum campo de login encontrado na página. Verifique se a URL está correta.')
+      }
 
       // Preencher credenciais (usar novos campos)
       const { cpf, cnpj, agency, accountNumber, accountDigit, password } = this.credentials
 
+      console.log('[ItauScraper] Preenchendo credenciais...')
+
       // Login PJ: CNPJ
       if (cnpj) {
-        const cnpjInput = await this.page.$('input[name="cnpj"], input[placeholder*="CNPJ"], input[id*="cnpj"], input[id*="CNPJ"]')
+        console.log('[ItauScraper] Modo: PJ (CNPJ)')
+        const cnpjSelectors = [
+          'input[name="cnpj"]',
+          'input[id="cnpj"]',
+          'input[id*="cnpj"]',
+          'input[placeholder*="CNPJ"]',
+          'input[placeholder*="cnpj"]',
+          '#cnpj',
+        ]
+        
+        let cnpjInput = null
+        for (const selector of cnpjSelectors) {
+          cnpjInput = await this.page.$(selector)
+          if (cnpjInput) {
+            console.log('[ItauScraper] Campo CNPJ encontrado:', selector)
+            break
+          }
+        }
+        
         if (cnpjInput) {
           await cnpjInput.type(cnpj.replace(/\D/g, ''), { delay: 100 })
+          console.log('[ItauScraper] CNPJ preenchido')
         } else {
           throw new Error('Campo CNPJ não encontrado na página de login')
         }
       } 
       // Login PF: CPF + Agência + Conta + Dígito
       else if (cpf && agency && accountNumber && accountDigit) {
-        // Preencher CPF
-        const cpfInput = await this.page.$('input[name="cpf"], input[placeholder*="CPF"], input[id*="cpf"], input[id*="CPF"]')
+        console.log('[ItauScraper] Modo: PF (CPF + Agência + Conta)')
+        
+        // Preencher CPF primeiro
+        const cpfSelectors = [
+          'input[name="cpf"]',
+          'input[id="cpf"]',
+          'input[id*="cpf"]',
+          'input[placeholder*="CPF"]',
+          'input[placeholder*="cpf"]',
+          '#cpf',
+        ]
+        
+        let cpfInput = null
+        for (const selector of cpfSelectors) {
+          cpfInput = await this.page.$(selector)
+          if (cpfInput) {
+            console.log('[ItauScraper] Campo CPF encontrado:', selector)
+            break
+          }
+        }
+        
         if (cpfInput) {
           await cpfInput.type(cpf.replace(/\D/g, ''), { delay: 100 })
+          console.log('[ItauScraper] CPF preenchido:', cpf.replace(/\D/g, ''))
+          
+          // Clicar em "Continuar" ou aguardar próxima etapa
+          const continueButton = await this.page.$('button[type="submit"], button:has-text("Continuar"), a:has-text("Continuar")')
+          if (continueButton) {
+            console.log('[ItauScraper] Clicando em Continuar...')
+            await continueButton.click()
+            await this.waitForNavigation()
+          } else {
+            // Aguardar campos aparecerem
+            await new Promise(resolve => setTimeout(resolve, 2000))
+          }
         } else {
           throw new Error('Campo CPF não encontrado na página de login')
         }
 
-        // Aguardar próxima etapa (pode abrir campos de agência/conta)
-        await new Promise(resolve => setTimeout(resolve, 1000))
-
         // Preencher Agência
-        const agenciaInput = await this.page.$('input[name="agencia"], input[placeholder*="agência"], input[placeholder*="Agencia"], input[id*="agencia"], input[id*="Agencia"]')
+        const agenciaSelectors = [
+          'input[name="agencia"]',
+          'input[id="agencia"]',
+          'input[id*="agencia"]',
+          'input[placeholder*="agência"]',
+          'input[placeholder*="Agencia"]',
+          '#agencia',
+        ]
+        
+        let agenciaInput = null
+        for (const selector of agenciaSelectors) {
+          agenciaInput = await this.page.$(selector)
+          if (agenciaInput) {
+            console.log('[ItauScraper] Campo Agência encontrado:', selector)
+            break
+          }
+        }
+        
         if (agenciaInput) {
           await agenciaInput.type(agency.replace(/\D/g, ''), { delay: 100 })
+          console.log('[ItauScraper] Agência preenchida:', agency.replace(/\D/g, ''))
         } else {
           throw new Error('Campo Agência não encontrado na página de login')
         }
 
         // Preencher Conta (número + dígito)
-        const contaInput = await this.page.$('input[name="conta"], input[placeholder*="conta"], input[id*="conta"], input[id*="Conta"]')
+        const contaSelectors = [
+          'input[name="conta"]',
+          'input[id="conta"]',
+          'input[id*="conta"]',
+          'input[placeholder*="conta"]',
+          'input[placeholder*="Conta"]',
+          '#conta',
+        ]
+        
+        let contaInput = null
+        for (const selector of contaSelectors) {
+          contaInput = await this.page.$(selector)
+          if (contaInput) {
+            console.log('[ItauScraper] Campo Conta encontrado:', selector)
+            break
+          }
+        }
+        
         if (contaInput) {
           const contaCompleta = `${accountNumber.replace(/\D/g, '')}-${accountDigit.replace(/\D/g, '')}`
           await contaInput.type(contaCompleta, { delay: 100 })
+          console.log('[ItauScraper] Conta preenchida:', contaCompleta)
         } else {
           throw new Error('Campo Conta não encontrado na página de login')
         }
@@ -97,16 +248,66 @@ export class ItauScraper extends BaseScraper {
       }
 
       // Preencher senha
-      const passwordInput = await this.page.$('input[type="password"], input[name="senha"]')
+      console.log('[ItauScraper] Procurando campo de senha...')
+      const passwordSelectors = [
+        'input[type="password"]',
+        'input[name="senha"]',
+        'input[id*="senha"]',
+        'input[id*="password"]',
+        '#senha',
+        '#password',
+      ]
+      
+      let passwordInput = null
+      for (const selector of passwordSelectors) {
+        passwordInput = await this.page.$(selector)
+        if (passwordInput) {
+          console.log('[ItauScraper] Campo senha encontrado:', selector)
+          break
+        }
+      }
+      
       if (passwordInput) {
         await passwordInput.type(password, { delay: 100 })
+        console.log('[ItauScraper] Senha preenchida')
+      } else {
+        throw new Error('Campo senha não encontrado na página de login')
       }
 
       // Clicar em entrar
-      const loginButton = await this.page.$('button[type="submit"], button:has-text("Entrar"), a:has-text("Entrar")')
+      console.log('[ItauScraper] Procurando botão de login...')
+      const loginButtonSelectors = [
+        'button[type="submit"]',
+        'button:has-text("Entrar")',
+        'button:has-text("Acessar")',
+        'a:has-text("Entrar")',
+        'a:has-text("Acessar")',
+        'button.btn-entrar',
+        'button.btn-acessar',
+      ]
+      
+      let loginButton = null
+      for (const selector of loginButtonSelectors) {
+        try {
+          loginButton = await this.page.$(selector)
+          if (loginButton) {
+            console.log('[ItauScraper] Botão de login encontrado:', selector)
+            break
+          }
+        } catch (e) {
+          // Continuar tentando
+        }
+      }
+      
       if (loginButton) {
+        console.log('[ItauScraper] Clicando em Entrar...')
         await loginButton.click()
         await this.waitForNavigation()
+        console.log('[ItauScraper] Navegação após login. URL atual:', this.page.url())
+      } else {
+        console.log('[ItauScraper] Botão de login não encontrado, tentando pressionar Enter...')
+        await this.page.keyboard.press('Enter')
+        await new Promise(resolve => setTimeout(resolve, 2000))
       }
 
       // Verificar se precisa de 2FA
