@@ -198,32 +198,76 @@ export class ItauScraper extends BaseScraper {
             console.log('[ItauScraper] Clicando em Continuar...')
             await (continueButton.asElement() as any).click()
             await this.waitForNavigation()
+            // Aguardar campos aparecerem dinamicamente
+            await new Promise(resolve => setTimeout(resolve, 3000))
+            console.log('[ItauScraper] URL após Continuar:', this.page.url())
           } else {
             // Tentar pressionar Enter ou aguardar campos aparecerem
             console.log('[ItauScraper] Botão Continuar não encontrado, tentando Enter...')
             await this.page.keyboard.press('Enter')
-            await new Promise(resolve => setTimeout(resolve, 2000))
+            await new Promise(resolve => setTimeout(resolve, 3000))
           }
         } else {
           throw new Error('Campo CPF não encontrado na página de login')
         }
 
-        // Preencher Agência
-        const agenciaSelectors = [
-          'input[name="agencia"]',
-          'input[id="agencia"]',
-          'input[id*="agencia"]',
-          'input[placeholder*="agência"]',
-          'input[placeholder*="Agencia"]',
-          '#agencia',
-        ]
-        
+        // Preencher Agência - COM RETRY E LOGS DETALHADOS
+        console.log('[ItauScraper] Procurando campo Agência...')
         let agenciaInput = null
-        for (const selector of agenciaSelectors) {
-          agenciaInput = await this.page.$(selector)
-          if (agenciaInput) {
-            console.log('[ItauScraper] Campo Agência encontrado:', selector)
-            break
+        let attempts = 0
+        const maxAttempts = 10
+        
+        while (!agenciaInput && attempts < maxAttempts) {
+          attempts++
+          console.log(`[ItauScraper] Tentativa ${attempts}/${maxAttempts} de encontrar campo Agência...`)
+          
+          const agenciaSelectors = [
+            'input[name="agencia"]',
+            'input[name*="agencia"]',
+            'input[id="agencia"]',
+            'input[id*="agencia"]',
+            'input[placeholder*="agência"]',
+            'input[placeholder*="Agencia"]',
+            'input[placeholder*="AGÊNCIA"]',
+            'input[type="text"][name*="ag"]',
+            'input[type="number"][name*="ag"]',
+            '#agencia',
+            '[data-testid*="agencia"]',
+          ]
+          
+          for (const selector of agenciaSelectors) {
+            try {
+              agenciaInput = await this.page.$(selector)
+              if (agenciaInput) {
+                console.log('[ItauScraper] Campo Agência encontrado:', selector)
+                break
+              }
+            } catch (e) {
+              // Continuar
+            }
+          }
+          
+          if (!agenciaInput) {
+            // Log detalhado do que está na página
+            const pageInfo = await this.page.evaluate(() => {
+              const inputs = Array.from(document.querySelectorAll('input'))
+              return {
+                url: window.location.href,
+                inputCount: inputs.length,
+                inputs: inputs.map((inp: any) => ({
+                  name: inp.name || '',
+                  id: inp.id || '',
+                  placeholder: inp.placeholder || '',
+                  type: inp.type || '',
+                  visible: inp.offsetParent !== null,
+                })),
+              }
+            })
+            
+            console.log('[ItauScraper] Informações da página (tentativa', attempts, '):', JSON.stringify(pageInfo, null, 2))
+            
+            // Aguardar mais um pouco
+            await new Promise(resolve => setTimeout(resolve, 1000))
           }
         }
         
@@ -231,32 +275,88 @@ export class ItauScraper extends BaseScraper {
           await agenciaInput.type(agency.replace(/\D/g, ''), { delay: 100 })
           console.log('[ItauScraper] Agência preenchida:', agency.replace(/\D/g, ''))
         } else {
-          throw new Error('Campo Agência não encontrado na página de login')
+          // Log final detalhado antes de lançar erro
+          const finalPageInfo = await this.page.evaluate(() => {
+            return {
+              url: window.location.href,
+              title: document.title,
+              allInputs: Array.from(document.querySelectorAll('input')).map((inp: any) => ({
+                name: inp.name,
+                id: inp.id,
+                placeholder: inp.placeholder,
+                type: inp.type,
+                value: inp.value,
+              })),
+              bodyText: document.body.innerText.substring(0, 500),
+            }
+          })
+          console.error('[ItauScraper] ERRO: Campo Agência não encontrado. Informações da página:', JSON.stringify(finalPageInfo, null, 2))
+          throw new Error('Campo Agência não encontrado na página de login após múltiplas tentativas')
         }
 
-        // Preencher Conta (número + dígito)
-        const contaSelectors = [
-          'input[name="conta"]',
-          'input[id="conta"]',
-          'input[id*="conta"]',
-          'input[placeholder*="conta"]',
-          'input[placeholder*="Conta"]',
-          '#conta',
-        ]
-        
+        // Preencher Conta (número + dígito) - COM RETRY
+        console.log('[ItauScraper] Procurando campo Conta...')
         let contaInput = null
-        for (const selector of contaSelectors) {
-          contaInput = await this.page.$(selector)
-          if (contaInput) {
-            console.log('[ItauScraper] Campo Conta encontrado:', selector)
-            break
+        let contaAttempts = 0
+        const maxContaAttempts = 5
+        
+        while (!contaInput && contaAttempts < maxContaAttempts) {
+          contaAttempts++
+          const contaSelectors = [
+            'input[name="conta"]',
+            'input[name*="conta"]',
+            'input[id="conta"]',
+            'input[id*="conta"]',
+            'input[placeholder*="conta"]',
+            'input[placeholder*="Conta"]',
+            'input[placeholder*="CONTA"]',
+            'input[type="text"][name*="conta"]',
+            'input[type="number"][name*="conta"]',
+            '#conta',
+            '[data-testid*="conta"]',
+          ]
+          
+          for (const selector of contaSelectors) {
+            try {
+              contaInput = await this.page.$(selector)
+              if (contaInput) {
+                console.log('[ItauScraper] Campo Conta encontrado:', selector)
+                break
+              }
+            } catch (e) {
+              // Continuar
+            }
+          }
+          
+          if (!contaInput) {
+            await new Promise(resolve => setTimeout(resolve, 1000))
           }
         }
         
         if (contaInput) {
-          const contaCompleta = `${accountNumber.replace(/\D/g, '')}-${accountDigit.replace(/\D/g, '')}`
-          await contaInput.type(contaCompleta, { delay: 100 })
-          console.log('[ItauScraper] Conta preenchida:', contaCompleta)
+          // Tentar diferentes formatos: "12345-6" ou "123456"
+          const accountFormats = [
+            `${accountNumber.replace(/\D/g, '')}-${accountDigit.replace(/\D/g, '')}`,
+            `${accountNumber.replace(/\D/g, '')}${accountDigit.replace(/\D/g, '')}`,
+            accountNumber.replace(/\D/g, '')
+          ]
+          let accountFilled = false
+          
+          for (const format of accountFormats) {
+            try {
+              await contaInput.click({ clickCount: 3 }) // Selecionar tudo
+              await contaInput.type(format, { delay: 100 })
+              console.log('[ItauScraper] Conta preenchida:', format)
+              accountFilled = true
+              break
+            } catch (e) {
+              // Tentar próximo formato
+            }
+          }
+          
+          if (!accountFilled) {
+            throw new Error('Erro ao preencher campo Conta')
+          }
         } else {
           throw new Error('Campo Conta não encontrado na página de login')
         }
