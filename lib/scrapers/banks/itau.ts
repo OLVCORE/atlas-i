@@ -33,23 +33,46 @@ export class ItauScraper extends BaseScraper {
     })
 
     // Navegar para página de login do Itaú
+    // O Itaú pode ter diferentes URLs de login, vamos tentar a principal
     const loginUrl = 'https://www.itau.com.br/conta-corrente/acesse-sua-conta/'
     console.log('[ItauScraper] Navegando para:', loginUrl)
     
-    await this.page.goto(loginUrl, {
-      waitUntil: 'networkidle2',
-      timeout: 30000,
-    })
-
-    console.log('[ItauScraper] Página carregada. URL atual:', this.page.url())
-
-    // Capturar screenshot para debug
     try {
-      await this.page.screenshot({ path: '/tmp/itau-login-1.png', fullPage: true })
-      console.log('[ItauScraper] Screenshot salvo: /tmp/itau-login-1.png')
-    } catch (e) {
-      console.log('[ItauScraper] Não foi possível salvar screenshot (normal em produção)')
+      await this.page.goto(loginUrl, {
+        waitUntil: 'domcontentloaded', // Mais rápido que networkidle2
+        timeout: 30000,
+      })
+      
+      // Aguardar um pouco para JavaScript carregar
+      await new Promise(resolve => setTimeout(resolve, 3000))
+      
+      console.log('[ItauScraper] Página carregada. URL atual:', this.page.url())
+      console.log('[ItauScraper] Título da página:', await this.page.title())
+    } catch (error) {
+      console.error('[ItauScraper] Erro ao navegar:', error)
+      throw new Error(`Falha ao carregar página de login: ${error instanceof Error ? error.message : String(error)}`)
     }
+
+      // Capturar screenshot para debug (base64 para logs)
+      try {
+        const screenshot = await this.page.screenshot({ encoding: 'base64', fullPage: false })
+        console.log('[ItauScraper] Screenshot capturado (base64, primeiros 100 chars):', screenshot.substring(0, 100))
+      } catch (e) {
+        console.log('[ItauScraper] Não foi possível capturar screenshot:', e)
+      }
+      
+      // Obter HTML da página para debug
+      try {
+        const pageContent = await this.page.content()
+        console.log('[ItauScraper] Tamanho do HTML:', pageContent.length, 'caracteres')
+        // Procurar por palavras-chave no HTML
+        const hasCpf = pageContent.toLowerCase().includes('cpf')
+        const hasAgencia = pageContent.toLowerCase().includes('agência') || pageContent.toLowerCase().includes('agencia')
+        const hasConta = pageContent.toLowerCase().includes('conta')
+        console.log('[ItauScraper] Palavras-chave no HTML:', { hasCpf, hasAgencia, hasConta })
+      } catch (e) {
+        console.log('[ItauScraper] Não foi possível obter HTML:', e)
+      }
 
     // Aguardar campo de login aparecer
     try {
