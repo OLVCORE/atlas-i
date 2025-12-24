@@ -379,32 +379,279 @@ export class ItauScraper extends BaseScraper {
   }
 
   /**
-   * Navega até a página de extratos/faturas
+   * Navega até a página de extratos/faturas e configura período
    */
-  protected async navigateToStatements(): Promise<void> {
+  protected async navigateToStatements(options?: {
+    accountType?: 'checking' | 'creditCard' | 'investment'
+    startDate?: Date
+    endDate?: Date
+  }): Promise<void> {
     if (!this.page) {
       throw new Error('Página não inicializada')
     }
 
+    console.log('[ItauScraper] Navegando até extratos...')
+    console.log('[ItauScraper] Opções:', {
+      accountType: options?.accountType,
+      startDate: options?.startDate?.toISOString(),
+      endDate: options?.endDate?.toISOString(),
+    })
+
     try {
-      // Navegar para extratos
-      // O Itaú geralmente tem um menu de navegação
-      const extratosLink = await this.page.$('a[href*="extrato"], a:has-text("Extrato"), nav a:has-text("Extratos")')
+      // Aguardar página inicial carregar após login
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      console.log('[ItauScraper] URL após login:', this.page.url())
+
+      // Determinar tipo de conta e navegar
+      const accountType = options?.accountType || 'checking'
       
-      if (extratosLink) {
-        await extratosLink.click()
-        await this.waitForNavigation()
+      if (accountType === 'creditCard') {
+        // NAVEGAR PARA FATURAS DE CARTÃO
+        console.log('[ItauScraper] Navegando para faturas de cartão...')
+        
+        // Procurar link/menu de cartões
+        const cartoesSelectors = [
+          'a[href*="cartao"]',
+          'a[href*="fatura"]',
+          'a:has-text("Cartão")',
+          'a:has-text("Fatura")',
+          'nav a:has-text("Cartões")',
+          'button:has-text("Cartão")',
+        ]
+        
+        let cartoesLink = null
+        for (const selector of cartoesSelectors) {
+          try {
+            cartoesLink = await this.page.$(selector)
+            if (cartoesLink) {
+              console.log('[ItauScraper] Link de cartões encontrado:', selector)
+              break
+            }
+          } catch (e) {
+            // Continuar
+          }
+        }
+        
+        if (cartoesLink) {
+          await cartoesLink.click()
+          await this.waitForNavigation()
+          await new Promise(resolve => setTimeout(resolve, 2000))
+        } else {
+          // Tentar URL direta
+          await this.page.goto('https://www.itau.com.br/cartoes/fatura/', {
+            waitUntil: 'domcontentloaded',
+            timeout: 30000,
+          })
+        }
+        
+        // SELECIONAR CARTÃO (se houver múltiplos)
+        console.log('[ItauScraper] Procurando seletor de cartão...')
+        const cardSelectors = [
+          'select[name*="cartao"]',
+          'select[id*="cartao"]',
+          'select[name*="card"]',
+          'button:has-text("Selecione")',
+          '.card-selector',
+        ]
+        
+        // Se houver múltiplos cartões, selecionar o primeiro (ou permitir configurar)
+        // Por enquanto, assumimos que já está no cartão correto ou há apenas um
+        console.log('[ItauScraper] Continuando com cartão atual (ou único)')
+        
       } else {
-        // Tentar navegar diretamente
-        await this.page.goto('https://www.itau.com.br/conta-corrente/extrato/', {
-          waitUntil: 'networkidle2',
-        })
+        // NAVEGAR PARA EXTRATOS DE CONTA CORRENTE
+        console.log('[ItauScraper] Navegando para extratos de conta corrente...')
+        
+        const extratosSelectors = [
+          'a[href*="extrato"]',
+          'a:has-text("Extrato")',
+          'nav a:has-text("Extratos")',
+          'button:has-text("Extrato")',
+          '.menu-extrato',
+        ]
+        
+        let extratosLink = null
+        for (const selector of extratosSelectors) {
+          try {
+            extratosLink = await this.page.$(selector)
+            if (extratosLink) {
+              console.log('[ItauScraper] Link de extratos encontrado:', selector)
+              break
+            }
+          } catch (e) {
+            // Continuar
+          }
+        }
+        
+        if (extratosLink) {
+          await extratosLink.click()
+          await this.waitForNavigation()
+          await new Promise(resolve => setTimeout(resolve, 2000))
+        } else {
+          // Tentar navegar diretamente
+          await this.page.goto('https://www.itau.com.br/conta-corrente/extrato/', {
+            waitUntil: 'domcontentloaded',
+            timeout: 30000,
+          })
+        }
       }
 
-      // Aguardar carregamento da página de extratos
-      await this.waitForSelector('table, .extrato, [data-testid*="extrato"]', 10000)
+      console.log('[ItauScraper] URL após navegação:', this.page.url())
+
+      // SELECIONAR PERÍODO (OBRIGATÓRIO)
+      console.log('[ItauScraper] Configurando período...')
+      
+      const startDate = options?.startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // Últimos 30 dias
+      const endDate = options?.endDate || new Date()
+      
+      // Formatar datas para o formato brasileiro (DD/MM/YYYY)
+      const formatDate = (date: Date) => {
+        const day = String(date.getDate()).padStart(2, '0')
+        const month = String(date.getMonth() + 1).padStart(2, '0')
+        const year = date.getFullYear()
+        return `${day}/${month}/${year}`
+      }
+      
+      const startDateStr = formatDate(startDate)
+      const endDateStr = formatDate(endDate)
+      
+      console.log('[ItauScraper] Período desejado:', { startDateStr, endDateStr })
+
+      // Procurar campos de data
+      const dateSelectors = {
+        start: [
+          'input[name*="dataInicial"]',
+          'input[name*="data_inicial"]',
+          'input[id*="dataInicial"]',
+          'input[id*="data_inicial"]',
+          'input[placeholder*="Data inicial"]',
+          'input[placeholder*="De"]',
+          '#dataInicial',
+          '#data_inicial',
+        ],
+        end: [
+          'input[name*="dataFinal"]',
+          'input[name*="data_final"]',
+          'input[id*="dataFinal"]',
+          'input[id*="data_final"]',
+          'input[placeholder*="Data final"]',
+          'input[placeholder*="Até"]',
+          '#dataFinal',
+          '#data_final',
+        ],
+      }
+
+      // Preencher data inicial
+      let startDateInput = null
+      for (const selector of dateSelectors.start) {
+        try {
+          startDateInput = await this.page.$(selector)
+          if (startDateInput) {
+            console.log('[ItauScraper] Campo data inicial encontrado:', selector)
+            break
+          }
+        } catch (e) {
+          // Continuar
+        }
+      }
+
+      if (startDateInput) {
+        // Limpar campo e preencher
+        await startDateInput.click({ clickCount: 3 }) // Selecionar tudo
+        await startDateInput.type(startDateStr, { delay: 100 })
+        console.log('[ItauScraper] Data inicial preenchida:', startDateStr)
+      } else {
+        console.log('[ItauScraper] Campo data inicial não encontrado - pode ser seleção por dropdown')
+      }
+
+      // Preencher data final
+      let endDateInput = null
+      for (const selector of dateSelectors.end) {
+        try {
+          endDateInput = await this.page.$(selector)
+          if (endDateInput) {
+            console.log('[ItauScraper] Campo data final encontrado:', selector)
+            break
+          }
+        } catch (e) {
+          // Continuar
+        }
+      }
+
+      if (endDateInput) {
+        await endDateInput.click({ clickCount: 3 })
+        await endDateInput.type(endDateStr, { delay: 100 })
+        console.log('[ItauScraper] Data final preenchida:', endDateStr)
+      } else {
+        console.log('[ItauScraper] Campo data final não encontrado - pode ser seleção por dropdown')
+      }
+
+      // Clicar em "Buscar" ou "Consultar"
+      const buscarSelectors = [
+        'button:has-text("Buscar")',
+        'button:has-text("Consultar")',
+        'button:has-text("Pesquisar")',
+        'button[type="submit"]',
+        'input[type="submit"]',
+        '.btn-buscar',
+        '.btn-consultar',
+      ]
+
+      let buscarButton = null
+      for (const selector of buscarSelectors) {
+        try {
+          buscarButton = await this.page.$(selector)
+          if (buscarButton) {
+            console.log('[ItauScraper] Botão buscar encontrado:', selector)
+            break
+          }
+        } catch (e) {
+          // Continuar
+        }
+      }
+
+      if (buscarButton) {
+        console.log('[ItauScraper] Clicando em Buscar...')
+        await buscarButton.click()
+        await this.waitForNavigation()
+        await new Promise(resolve => setTimeout(resolve, 3000)) // Aguardar resultados carregarem
+      } else {
+        console.log('[ItauScraper] Botão buscar não encontrado - pode carregar automaticamente')
+        await new Promise(resolve => setTimeout(resolve, 3000))
+      }
+
+      // Aguardar tabela/lista de transações aparecer
+      console.log('[ItauScraper] Aguardando transações carregarem...')
+      const transactionSelectors = [
+        'table',
+        '.extrato',
+        '.transacoes',
+        '[data-testid*="extrato"]',
+        '[data-testid*="transaction"]',
+        '.lista-transacoes',
+        'tbody tr',
+      ]
+
+      let foundTable = false
+      for (const selector of transactionSelectors) {
+        try {
+          await this.page.waitForSelector(selector, { timeout: 5000 })
+          console.log('[ItauScraper] Tabela/lista encontrada:', selector)
+          foundTable = true
+          break
+        } catch (e) {
+          // Continuar
+        }
+      }
+
+      if (!foundTable) {
+        console.log('[ItauScraper] AVISO: Tabela de transações não encontrada - pode não haver transações no período')
+      }
+
+      console.log('[ItauScraper] Navegação até extratos concluída')
 
     } catch (error) {
+      console.error('[ItauScraper] Erro ao navegar até extratos:', error)
       throw new Error(`Erro ao navegar até extratos: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
@@ -481,9 +728,12 @@ export class ItauScraper extends BaseScraper {
         })
       })
 
+      console.log('[ItauScraper] Linhas encontradas:', rows.length)
+
       // Processar e normalizar transações
       for (const row of rows) {
         if (!row.date || !row.description || !row.amount) {
+          console.log('[ItauScraper] Linha ignorada (dados incompletos):', row)
           continue // Pular linhas inválidas
         }
 
@@ -499,10 +749,18 @@ export class ItauScraper extends BaseScraper {
             type: row.type,
             raw: row.raw,
           })
+        } else {
+          console.log('[ItauScraper] Data inválida:', row.date)
         }
       }
 
+      console.log('[ItauScraper] Transações extraídas:', transactions.length)
+      if (transactions.length > 0) {
+        console.log('[ItauScraper] Primeira transação:', transactions[0])
+      }
+
     } catch (error) {
+      console.error('[ItauScraper] Erro ao extrair transações:', error)
       throw new Error(`Erro ao extrair transações: ${error instanceof Error ? error.message : String(error)}`)
     }
 

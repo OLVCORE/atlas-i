@@ -134,9 +134,13 @@ export abstract class BaseScraper {
   protected abstract login(): Promise<void>
 
   /**
-   * Navega até a página de extratos/faturas
+   * Navega até a página de extratos/faturas e configura período
    */
-  protected abstract navigateToStatements(): Promise<void>
+  protected abstract navigateToStatements(options?: {
+    accountType?: 'checking' | 'creditCard' | 'investment'
+    startDate?: Date
+    endDate?: Date
+  }): Promise<void>
 
   /**
    * Extrai transações da página atual
@@ -207,9 +211,13 @@ export abstract class BaseScraper {
         return result
       }
 
-      // Navegar até extratos
+      // Navegar até extratos e configurar período
       try {
-        await this.navigateToStatements()
+        await this.navigateToStatements({
+          accountType: options?.accountType,
+          startDate: options?.startDate,
+          endDate: options?.endDate,
+        })
       } catch (error) {
         result.errors.push({
           message: 'Erro ao navegar até extratos',
