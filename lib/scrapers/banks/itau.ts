@@ -57,7 +57,7 @@ export class ItauScraper extends BaseScraper {
         }
 
         // Aguardar próxima etapa (pode abrir campos de agência/conta)
-        await this.page.waitForTimeout(1000)
+        await new Promise(resolve => setTimeout(resolve, 1000))
 
         // Preencher Agência
         const agenciaInput = await this.page.$('input[name="agencia"], input[placeholder*="agência"], input[placeholder*="Agencia"], input[id*="agencia"], input[id*="Agencia"]')

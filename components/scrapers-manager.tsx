@@ -380,7 +380,29 @@ export function ScrapersManager({
                         </>
                       )}
                     </Button>
-                    <Button variant="outline" size="sm">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={async () => {
+                        if (!confirm('Tem certeza que deseja deletar esta conexão?')) {
+                          return
+                        }
+                        try {
+                          const response = await fetch(`/api/scrapers/delete?connectionId=${conn.id}`, {
+                            method: 'DELETE',
+                          })
+                          const data = await response.json()
+                          if (data.ok) {
+                            alert('Conexão deletada com sucesso!')
+                            loadConnections()
+                          } else {
+                            alert(`Erro ao deletar: ${data.message || data.error}`)
+                          }
+                        } catch (error) {
+                          alert(`Erro ao deletar conexão: ${error instanceof Error ? error.message : 'Erro desconhecido'}`)
+                        }
+                      }}
+                    >
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>

@@ -30,16 +30,50 @@ export abstract class BaseScraper {
     let browserWSEndpoint: string | undefined = undefined
     
     if (browserlessUrl && browserlessToken) {
-      // Browserless.io usa WebSocket (wss://) para conectar ao Puppeteer
-      // Se a URL fornecida já for wss://, usar diretamente
-      // Se for https://, converter para wss://
-      const wsUrl = browserlessUrl.startsWith('wss://') 
-        ? browserlessUrl 
-        : browserlessUrl.replace(/^https?:\/\//, 'wss://').replace(/^ws:\/\//, 'wss://')
+      // Browserless.io: usar connect() para conectar via WebSocket
+      // Formato: wss://chrome.browserless.io?token=TOKEN
+      let wsUrl = browserlessUrl
       
-      browserWSEndpoint = `${wsUrl}?token=${browserlessToken}`
+      // Converter https:// para wss:// se necessário
+      if (wsUrl.startsWith('https://')) {
+        wsUrl = wsUrl.replace('https://', 'wss://')
+      } else if (wsUrl.startsWith('http://')) {
+        wsUrl = wsUrl.replace('http://', 'ws://')
+      } else if (!wsUrl.startsWith('wss://') && !wsUrl.startsWith('ws://')) {
+        // Se não tem protocolo, assumir wss://
+        wsUrl = `wss://${wsUrl}`
+      }
+      
+      // Adicionar token como query parameter
+      const url = new URL(wsUrl)
+      url.searchParams.set('token', browserlessToken)
+      browserWSEndpoint = url.toString()
+      
+      // Usar puppeteer.connect() em vez de launch() para Browserless
+      try {
+        this.browser = await puppeteer.connect({
+          browserWSEndpoint,
+          defaultViewport: null,
+        })
+        
+        // Obter página existente ou criar nova
+        const pages = await this.browser.pages()
+        this.page = pages.length > 0 ? pages[0] : await this.browser.newPage()
+        
+        // Configurar user agent
+        await this.page.setUserAgent(
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        )
+        this.page.setDefaultTimeout(30000)
+        
+        return // Sair aqui, já conectou
+      } catch (error) {
+        console.error('[BaseScraper] Erro ao conectar ao Browserless:', error)
+        throw new Error(`Falha ao conectar ao Browserless: ${error instanceof Error ? error.message : String(error)}`)
+      }
     }
 
+    // Fallback: usar Puppeteer local
     this.browser = await puppeteer.launch({
       headless: true,
       args: [
@@ -49,9 +83,6 @@ export abstract class BaseScraper {
         '--disable-accelerated-2d-canvas',
         '--disable-gpu',
       ],
-      ...(browserWSEndpoint && {
-        browserWSEndpoint,
-      }),
     })
 
     this.page = await this.browser.newPage()
