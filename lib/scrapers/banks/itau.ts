@@ -493,7 +493,7 @@ export class ItauScraper extends BaseScraper {
       console.log(`[ItauScraper] URL após continuar: ${urlAfterContinue}`)
       
       // Verificar se a URL mudou (indica que navegou)
-      if (urlAfterContinue === homeUrl) {
+      if (urlAfterContinue === finalUrl) {
         console.log('[ItauScraper] ⚠️ URL não mudou - pode estar em modal ou a navegação falhou')
       }
       
@@ -584,7 +584,7 @@ export class ItauScraper extends BaseScraper {
       ])
 
       // Verificar se login foi bem-sucedido
-      const finalUrl = this.page.url()
+      const loginFinalUrl = this.page.url()
       if (await this.isErrorPage()) {
         throw new Error('Login falhou - redirecionado para página de erro')
       }
@@ -595,12 +595,12 @@ export class ItauScraper extends BaseScraper {
       }
 
       // Verificar se está logado
-      if (finalUrl.includes('login') || finalUrl.includes('acesse-sua-conta')) {
+      if (loginFinalUrl.includes('login') || loginFinalUrl.includes('acesse-sua-conta')) {
         throw new Error('Falha no login - ainda na página de login')
       }
 
       console.log('[ItauScraper] ========================================')
-      console.log(`[ItauScraper] ✅ LOGIN CONCLUÍDO: ${finalUrl}`)
+      console.log(`[ItauScraper] ✅ LOGIN CONCLUÍDO: ${loginFinalUrl}`)
       console.log('[ItauScraper] ========================================')
 
     } catch (error) {
