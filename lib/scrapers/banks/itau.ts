@@ -184,13 +184,24 @@ export class ItauScraper extends BaseScraper {
           console.log('[ItauScraper] CPF preenchido:', cpf.replace(/\D/g, ''))
           
           // Clicar em "Continuar" ou aguardar próxima etapa
-          const continueButton = await this.page.$('button[type="submit"], button:has-text("Continuar"), a:has-text("Continuar")')
-          if (continueButton) {
+          // Usar XPath para encontrar botão com texto "Continuar" (Puppeteer não suporta :has-text)
+          const continueButton = await this.page.evaluateHandle(() => {
+            // Procurar por botão ou link com texto "Continuar"
+            const buttons = Array.from(document.querySelectorAll('button, a, input[type="submit"]'))
+            return buttons.find((el: any) => {
+              const text = el.textContent?.toLowerCase() || el.value?.toLowerCase() || ''
+              return text.includes('continuar') || text.includes('próximo') || text.includes('avançar')
+            }) || null
+          })
+          
+          if (continueButton && continueButton.asElement()) {
             console.log('[ItauScraper] Clicando em Continuar...')
-            await continueButton.click()
+            await (continueButton.asElement() as any).click()
             await this.waitForNavigation()
           } else {
-            // Aguardar campos aparecerem
+            // Tentar pressionar Enter ou aguardar campos aparecerem
+            console.log('[ItauScraper] Botão Continuar não encontrado, tentando Enter...')
+            await this.page.keyboard.press('Enter')
             await new Promise(resolve => setTimeout(resolve, 2000))
           }
         } else {
@@ -299,32 +310,18 @@ export class ItauScraper extends BaseScraper {
 
       // Clicar em entrar
       console.log('[ItauScraper] Procurando botão de login...')
-      const loginButtonSelectors = [
-        'button[type="submit"]',
-        'button:has-text("Entrar")',
-        'button:has-text("Acessar")',
-        'a:has-text("Entrar")',
-        'a:has-text("Acessar")',
-        'button.btn-entrar',
-        'button.btn-acessar',
-      ]
+      // Usar XPath/evaluate para encontrar botão com texto (Puppeteer não suporta :has-text)
+      const loginButton = await this.page.evaluateHandle(() => {
+        const buttons = Array.from(document.querySelectorAll('button, a, input[type="submit"]'))
+        return buttons.find((el: any) => {
+          const text = (el.textContent || el.value || '').toLowerCase()
+          return text.includes('entrar') || text.includes('acessar') || text.includes('login')
+        }) || null
+      })
       
-      let loginButton = null
-      for (const selector of loginButtonSelectors) {
-        try {
-          loginButton = await this.page.$(selector)
-          if (loginButton) {
-            console.log('[ItauScraper] Botão de login encontrado:', selector)
-            break
-          }
-        } catch (e) {
-          // Continuar tentando
-        }
-      }
-      
-      if (loginButton) {
-        console.log('[ItauScraper] Clicando em Entrar...')
-        await loginButton.click()
+      if (loginButton && loginButton.asElement()) {
+        console.log('[ItauScraper] Botão de login encontrado')
+        await (loginButton.asElement() as any).click()
         await this.waitForNavigation()
         console.log('[ItauScraper] Navegação após login. URL atual:', this.page.url())
       } else {
@@ -409,86 +406,102 @@ export class ItauScraper extends BaseScraper {
         // NAVEGAR PARA FATURAS DE CARTÃO
         console.log('[ItauScraper] Navegando para faturas de cartão...')
         
-        // Procurar link/menu de cartões
-        const cartoesSelectors = [
-          'a[href*="cartao"]',
-          'a[href*="fatura"]',
-          'a:has-text("Cartão")',
-          'a:has-text("Fatura")',
-          'nav a:has-text("Cartões")',
-          'button:has-text("Cartão")',
-        ]
+        // Passo 1: Clicar em "Cartões" no menu
+        console.log('[ItauScraper] Procurando menu "Cartões"...')
+        const cartoesMenu = await this.page.evaluateHandle(() => {
+          const links = Array.from(document.querySelectorAll('a, button, nav a, .menu-item'))
+          return links.find((el: any) => {
+            const text = (el.textContent || '').toLowerCase()
+            return text.includes('cartão') || text.includes('cartoes') || (el.href && el.href.includes('cartao'))
+          }) || null
+        })
         
-        let cartoesLink = null
-        for (const selector of cartoesSelectors) {
-          try {
-            cartoesLink = await this.page.$(selector)
-            if (cartoesLink) {
-              console.log('[ItauScraper] Link de cartões encontrado:', selector)
-              break
-            }
-          } catch (e) {
-            // Continuar
-          }
+        if (cartoesMenu && cartoesMenu.asElement()) {
+          console.log('[ItauScraper] Menu Cartões encontrado, clicando...')
+          await (cartoesMenu.asElement() as any).click()
+          await this.waitForNavigation()
+          await new Promise(resolve => setTimeout(resolve, 2000))
         }
         
-        if (cartoesLink) {
-          await cartoesLink.click()
+        // Passo 2: Clicar em "Fatura e Limite" ou "Fatura"
+        console.log('[ItauScraper] Procurando "Fatura e Limite" ou "Fatura"...')
+        const faturaLink = await this.page.evaluateHandle(() => {
+          const links = Array.from(document.querySelectorAll('a, button'))
+          return links.find((el: any) => {
+            const text = (el.textContent || '').toLowerCase()
+            return text.includes('fatura') || (el.href && el.href.includes('fatura'))
+          }) || null
+        })
+        
+        if (faturaLink && faturaLink.asElement()) {
+          console.log('[ItauScraper] Link Fatura encontrado, clicando...')
+          await (faturaLink.asElement() as any).click()
           await this.waitForNavigation()
           await new Promise(resolve => setTimeout(resolve, 2000))
         } else {
           // Tentar URL direta
+          console.log('[ItauScraper] Tentando URL direta de faturas...')
           await this.page.goto('https://www.itau.com.br/cartoes/fatura/', {
             waitUntil: 'domcontentloaded',
             timeout: 30000,
           })
         }
         
-        // SELECIONAR CARTÃO (se houver múltiplos)
-        console.log('[ItauScraper] Procurando seletor de cartão...')
-        const cardSelectors = [
-          'select[name*="cartao"]',
-          'select[id*="cartao"]',
-          'select[name*="card"]',
-          'button:has-text("Selecione")',
-          '.card-selector',
-        ]
-        
-        // Se houver múltiplos cartões, selecionar o primeiro (ou permitir configurar)
-        // Por enquanto, assumimos que já está no cartão correto ou há apenas um
-        console.log('[ItauScraper] Continuando com cartão atual (ou único)')
-        
-      } else {
-        // NAVEGAR PARA EXTRATOS DE CONTA CORRENTE
-        console.log('[ItauScraper] Navegando para extratos de conta corrente...')
-        
-        const extratosSelectors = [
-          'a[href*="extrato"]',
-          'a:has-text("Extrato")',
-          'nav a:has-text("Extratos")',
-          'button:has-text("Extrato")',
-          '.menu-extrato',
-        ]
-        
-        let extratosLink = null
-        for (const selector of extratosSelectors) {
-          try {
-            extratosLink = await this.page.$(selector)
-            if (extratosLink) {
-              console.log('[ItauScraper] Link de extratos encontrado:', selector)
-              break
-            }
-          } catch (e) {
-            // Continuar
+        // Passo 3: SELECIONAR CARTÃO (se houver múltiplos)
+        console.log('[ItauScraper] Verificando se há múltiplos cartões...')
+        const cardSelect = await this.page.$('select[name*="cartao"], select[id*="cartao"], select[name*="card"]')
+        if (cardSelect) {
+          console.log('[ItauScraper] Seletor de cartão encontrado - selecionando primeiro cartão')
+          // Selecionar primeira opção (ou permitir configurar qual cartão)
+          const options = await this.page.$$eval('select[name*="cartao"] option', (opts) => {
+            return opts.map((opt: any) => ({ value: opt.value, text: opt.textContent }))
+          })
+          if (options.length > 1) {
+            await this.page.select('select[name*="cartao"]', options[1].value) // Primeira opção válida (pula "Selecione")
+            await new Promise(resolve => setTimeout(resolve, 1000))
           }
+        } else {
+          console.log('[ItauScraper] Apenas um cartão ou já selecionado')
         }
         
-        if (extratosLink) {
-          await extratosLink.click()
+      } else {
+        // NAVEGAR PARA EXTRATOS DE CONTA CORRENTE - MENU COMPLETO
+        console.log('[ItauScraper] Navegando para extratos de conta corrente...')
+        
+        // Passo 1: Clicar em "Conta Corrente" no menu
+        console.log('[ItauScraper] Procurando menu "Conta Corrente"...')
+        const contaCorrenteMenu = await this.page.evaluateHandle(() => {
+          const links = Array.from(document.querySelectorAll('a, button, nav a, .menu-item, li'))
+          return links.find((el: any) => {
+            const text = (el.textContent || '').toLowerCase()
+            return text.includes('conta corrente') || text.includes('conta-corrente')
+          }) || null
+        })
+        
+        if (contaCorrenteMenu && contaCorrenteMenu.asElement()) {
+          console.log('[ItauScraper] Menu Conta Corrente encontrado, clicando...')
+          await (contaCorrenteMenu.asElement() as any).click()
+          await new Promise(resolve => setTimeout(resolve, 1500))
+        }
+        
+        // Passo 2: Clicar em "Saldo e Extrato" ou "Extrato"
+        console.log('[ItauScraper] Procurando "Saldo e Extrato" ou "Extrato Novo"...')
+        const saldoExtratoLink = await this.page.evaluateHandle(() => {
+          const links = Array.from(document.querySelectorAll('a, button'))
+          return links.find((el: any) => {
+            const text = (el.textContent || '').toLowerCase()
+            return text.includes('saldo e extrato') || text.includes('extrato novo') || text.includes('extrato')
+          }) || null
+        })
+        
+        if (saldoExtratoLink && saldoExtratoLink.asElement()) {
+          console.log('[ItauScraper] Link Saldo e Extrato encontrado, clicando...')
+          await (saldoExtratoLink.asElement() as any).click()
           await this.waitForNavigation()
           await new Promise(resolve => setTimeout(resolve, 2000))
         } else {
           // Tentar navegar diretamente
+          console.log('[ItauScraper] Tentando URL direta de extratos...')
           await this.page.goto('https://www.itau.com.br/conta-corrente/extrato/', {
             waitUntil: 'domcontentloaded',
             timeout: 30000,
@@ -587,36 +600,23 @@ export class ItauScraper extends BaseScraper {
       }
 
       // Clicar em "Buscar" ou "Consultar"
-      const buscarSelectors = [
-        'button:has-text("Buscar")',
-        'button:has-text("Consultar")',
-        'button:has-text("Pesquisar")',
-        'button[type="submit"]',
-        'input[type="submit"]',
-        '.btn-buscar',
-        '.btn-consultar',
-      ]
+      console.log('[ItauScraper] Procurando botão Buscar/Consultar...')
+      const buscarButton = await this.page.evaluateHandle(() => {
+        const buttons = Array.from(document.querySelectorAll('button, input[type="submit"], a'))
+        return buttons.find((el: any) => {
+          const text = (el.textContent || el.value || '').toLowerCase()
+          return text.includes('buscar') || text.includes('consultar') || text.includes('pesquisar') || text.includes('filtrar')
+        }) || null
+      })
 
-      let buscarButton = null
-      for (const selector of buscarSelectors) {
-        try {
-          buscarButton = await this.page.$(selector)
-          if (buscarButton) {
-            console.log('[ItauScraper] Botão buscar encontrado:', selector)
-            break
-          }
-        } catch (e) {
-          // Continuar
-        }
-      }
-
-      if (buscarButton) {
-        console.log('[ItauScraper] Clicando em Buscar...')
-        await buscarButton.click()
+      if (buscarButton && buscarButton.asElement()) {
+        console.log('[ItauScraper] Botão buscar encontrado, clicando...')
+        await (buscarButton.asElement() as any).click()
         await this.waitForNavigation()
         await new Promise(resolve => setTimeout(resolve, 3000)) // Aguardar resultados carregarem
       } else {
-        console.log('[ItauScraper] Botão buscar não encontrado - pode carregar automaticamente')
+        console.log('[ItauScraper] Botão buscar não encontrado - pode carregar automaticamente ou tentar Enter')
+        await this.page.keyboard.press('Enter')
         await new Promise(resolve => setTimeout(resolve, 3000))
       }
 
