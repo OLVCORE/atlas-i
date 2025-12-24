@@ -525,6 +525,126 @@ export function ScrapersManager({
                   </Select>
                 </div>
 
+                {/* Campos de identificação - dependem do tipo de entidade e banco */}
+                {(() => {
+                  const selectedEntity = entities.find(e => e.id === formData.entityId)
+                  const isPF = selectedEntity?.type === 'PF'
+                  const isPJ = selectedEntity?.type === 'PJ'
+                  const isItau = formData.bankCode === 'itau'
+                  
+                  // Itaú PF: CPF + Agência + Conta + Dígito
+                  if (isItau && isPF && formData.entityId && formData.bankCode) {
+                    return (
+                      <>
+                        <div>
+                          <Label>CPF *</Label>
+                          <p className="text-xs text-muted-foreground mb-2">
+                            CPF (apenas números, 11 dígitos)
+                          </p>
+                          <Input
+                            value={formData.cpf}
+                            onChange={(e) => setFormData({ ...formData, cpf: e.target.value.replace(/\D/g, '').slice(0, 11) })}
+                            placeholder="00000000000"
+                            disabled={!formData.bankCode}
+                            maxLength={11}
+                          />
+                        </div>
+                        
+                        <div className="grid grid-cols-3 gap-4">
+                          <div>
+                            <Label>Agência *</Label>
+                            <p className="text-xs text-muted-foreground mb-2">
+                              Agência (4 dígitos)
+                            </p>
+                            <Input
+                              value={formData.agency}
+                              onChange={(e) => setFormData({ ...formData, agency: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+                              placeholder="1234"
+                              disabled={!formData.bankCode}
+                              maxLength={4}
+                            />
+                          </div>
+                          
+                          <div>
+                            <Label>Conta *</Label>
+                            <p className="text-xs text-muted-foreground mb-2">
+                              Número da conta
+                            </p>
+                            <Input
+                              value={formData.accountNumber}
+                              onChange={(e) => setFormData({ ...formData, accountNumber: e.target.value.replace(/\D/g, '') })}
+                              placeholder="56789"
+                              disabled={!formData.bankCode}
+                            />
+                          </div>
+                          
+                          <div>
+                            <Label>Dígito *</Label>
+                            <p className="text-xs text-muted-foreground mb-2">
+                              Dígito da conta
+                            </p>
+                            <Input
+                              value={formData.accountDigit}
+                              onChange={(e) => setFormData({ ...formData, accountDigit: e.target.value.replace(/\D/g, '').slice(0, 2) })}
+                              placeholder="0"
+                              disabled={!formData.bankCode}
+                              maxLength={2}
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )
+                  }
+                  
+                  // Itaú PJ: CNPJ
+                  if (isItau && isPJ && formData.entityId && formData.bankCode) {
+                    return (
+                      <div>
+                        <Label>CNPJ *</Label>
+                        <p className="text-xs text-muted-foreground mb-2">
+                          CNPJ (apenas números, 14 dígitos)
+                        </p>
+                        <Input
+                          value={formData.cnpj}
+                          onChange={(e) => setFormData({ ...formData, cnpj: e.target.value.replace(/\D/g, '').slice(0, 14) })}
+                          placeholder="00000000000000"
+                          disabled={!formData.bankCode}
+                          maxLength={14}
+                        />
+                      </div>
+                    )
+                  }
+                  
+                  // Outros bancos: CPF/CNPJ genérico
+                  if (formData.entityId && formData.bankCode && !isItau) {
+                    return (
+                      <div>
+                        <Label>{isPF ? 'CPF' : 'CNPJ'} *</Label>
+                        <p className="text-xs text-muted-foreground mb-2">
+                          {isPF ? 'CPF (apenas números, 11 dígitos)' : 'CNPJ (apenas números, 14 dígitos)'}
+                        </p>
+                        <Input
+                          value={isPF ? formData.cpf : formData.cnpj}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, '')
+                            if (isPF) {
+                              setFormData({ ...formData, cpf: value.slice(0, 11) })
+                            } else {
+                              setFormData({ ...formData, cnpj: value.slice(0, 14) })
+                            }
+                          }}
+                          placeholder={isPF ? "00000000000" : "00000000000000"}
+                          disabled={!formData.bankCode || !formData.entityId}
+                          maxLength={isPF ? 11 : 14}
+                        />
+                      </div>
+                    )
+                  }
+                  
+                  // Se não selecionou entidade/banco ainda, não mostra nada
+                  return null
+                })()}
+
                 <div>
                   <Label>Senha *</Label>
                   <p className="text-xs text-muted-foreground mb-2">
