@@ -776,13 +776,21 @@ export class ItauScraper extends BaseScraper {
 
       // Clicar em "Buscar" ou "Consultar"
       console.log('[ItauScraper] Procurando botão Buscar/Consultar...')
-      const buscarClicked = await this.safeClick('buscar')
-      
-      if (buscarClicked) {
+      const buscarButton = await this.page.evaluateHandle(() => {
+        const buttons = Array.from(document.querySelectorAll('button, input[type="submit"], a'))
+        return buttons.find((el: any) => {
+          const text = (el.textContent || el.value || '').toLowerCase()
+          return text.includes('buscar') || text.includes('consultar') || text.includes('pesquisar') || text.includes('filtrar')
+        }) || null
+      })
+
+      if (buscarButton && buscarButton.asElement()) {
+        console.log('[ItauScraper] Botão buscar encontrado, clicando...')
+        await (buscarButton.asElement() as any).click()
         await this.waitForNavigation()
         await new Promise(resolve => setTimeout(resolve, 3000)) // Aguardar resultados carregarem
       } else {
-        console.log('[ItauScraper] Botão buscar não encontrado - tentando Enter como fallback')
+        console.log('[ItauScraper] Botão buscar não encontrado - pode carregar automaticamente ou tentar Enter')
         await this.page.keyboard.press('Enter')
         await new Promise(resolve => setTimeout(resolve, 3000))
       }
