@@ -189,15 +189,14 @@ export function ContractsTableClient({
                       Ver Cronograma
                     </Link>
                   </Button>
-                  <Link href={`/app/contracts/edit/${contract.id}`}>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      title="Editar contrato"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                  </Link>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleEditClick(contract)}
+                    title="Editar contrato"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
                   {(() => {
                     const cancelInfo = getCancelInfo(contract)
                     if (cancelInfo.canCancel) {
@@ -279,6 +278,19 @@ export function ContractsTableClient({
           {error}
         </div>
       )}
+
+      <ContractEditDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        contract={selectedContract}
+        entities={entities}
+        onUpdateAction={(prevState, formData) => {
+          if (!selectedContract) {
+            return Promise.resolve({ ok: false, error: "Contrato não selecionado" })
+          }
+          return onUpdateAction(selectedContract.id, prevState, formData)
+        }}
+      />
     </div>
   )
 }
