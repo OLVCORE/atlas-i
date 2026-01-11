@@ -19,7 +19,7 @@ SET search_path = public
 AS $$
 BEGIN
   -- Se o contrato foi deletado (deleted_at não é NULL), marcar todos os schedules também
-  IF NEW.deleted_at IS NOT NULL AND (OLD.deleted_at IS NULL OR OLD.deleted_at IS NULL) THEN
+  IF NEW.deleted_at IS NOT NULL AND OLD.deleted_at IS NULL THEN
     UPDATE public.contract_schedules
     SET deleted_at = NEW.deleted_at
     WHERE contract_id = NEW.id
