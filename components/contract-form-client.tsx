@@ -156,20 +156,67 @@ export function ContractFormClient({ entities, action }: ContractFormClientProps
             <Label htmlFor="adjustment_index">Índice de Correção</Label>
             <HelpTooltip contentKey="contracts.adjustment_index" />
           </div>
-          <select
-            id="adjustment_index"
-            name="adjustment_index"
-            required
-            defaultValue="NONE"
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <option value="NONE">Nenhum</option>
-            <option value="IPCA">IPCA</option>
-            <option value="IGPM">IGP-M</option>
-            <option value="CDI">CDI</option>
-            <option value="MANUAL">Manual</option>
-            <option value="CUSTOM">Personalizado</option>
-          </select>
+          <div className="flex gap-2">
+            <select
+              id="adjustment_index"
+              name="adjustment_index"
+              required
+              defaultValue="NONE"
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="NONE">Nenhum</option>
+              <option value="IPCA">IPCA</option>
+              <option value="IGPM">IGP-M</option>
+              <option value="CDI">CDI</option>
+              <option value="MANUAL">Manual</option>
+              <option value="CUSTOM">Personalizado</option>
+            </select>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                const indexSelect = document.getElementById('adjustment_index') as HTMLSelectElement
+                const startDateInput = document.getElementById('start_date') as HTMLInputElement
+                const endDateInput = document.getElementById('end_date') as HTMLInputElement
+                const index = indexSelect.value
+                const startDate = startDateInput.value
+                const endDate = endDateInput.value || new Date().toISOString().split('T')[0]
+
+                if (index === 'NONE' || index === 'MANUAL' || index === 'CUSTOM') {
+                  alert('Selecione um índice (IPCA, IGP-M ou CDI) para buscar do Banco Central')
+                  return
+                }
+
+                if (!startDate) {
+                  alert('Informe a data de início do contrato')
+                  return
+                }
+
+                try {
+                  const response = await fetch(`/api/indices/bcb?index=${index}&startDate=${startDate}&endDate=${endDate}&accumulated=true`)
+                  const data = await response.json()
+                  
+                  if (data.error) {
+                    alert(`Erro: ${data.error}`)
+                    return
+                  }
+
+                  const percentageInput = document.getElementById('adjustment_percentage') as HTMLInputElement
+                  if (percentageInput) {
+                    percentageInput.value = (data.accumulated / 100).toFixed(4)
+                  }
+                  
+                  alert(`Índice ${index} acumulado no período: ${data.accumulated.toFixed(2)}%`)
+                } catch (error) {
+                  alert('Erro ao buscar índice do Banco Central')
+                }
+              }}
+              title="Buscar índice do Banco Central"
+            >
+              🔍 BCB
+            </Button>
+          </div>
         </div>
 
         <div className="space-y-2">
