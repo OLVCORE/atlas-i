@@ -32,6 +32,12 @@ export type CreateContractInput = {
   title: string
   description?: string | null
   totalValue: number
+  monthlyValue?: number
+  valueType?: 'total' | 'monthly' | 'quarterly' | 'yearly'
+  recurrencePeriod?: 'monthly' | 'quarterly' | 'yearly'
+  adjustmentIndex?: 'NONE' | 'IPCA' | 'IGPM' | 'CDI' | 'MANUAL' | 'CUSTOM'
+  adjustmentFrequency?: 'NONE' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY'
+  adjustmentPercentage?: number
   currency?: string
   startDate: string | Date
   endDate?: string | Date | null
@@ -41,7 +47,38 @@ export type UpdateContractInput = {
   title?: string
   description?: string | null
   status?: 'draft' | 'active' | 'completed' | 'cancelled'
+  totalValue?: number
+  monthlyValue?: number
+  valueType?: 'total' | 'monthly' | 'quarterly' | 'yearly'
+  recurrencePeriod?: 'monthly' | 'quarterly' | 'yearly'
+  adjustmentIndex?: 'NONE' | 'IPCA' | 'IGPM' | 'CDI' | 'MANUAL' | 'CUSTOM'
+  adjustmentFrequency?: 'NONE' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY'
+  adjustmentPercentage?: number
+  currency?: string
+  startDate?: string | Date
   endDate?: string | Date | null
+}
+
+/**
+ * Busca um contrato por ID
+ */
+export async function getContractById(contractId: string): Promise<Contract | null> {
+  const supabase = await createClient()
+  const workspace = await getActiveWorkspace()
+  
+  const { data, error } = await supabase
+    .from("contracts")
+    .select("*")
+    .eq("id", contractId)
+    .eq("workspace_id", workspace.id)
+    .is("deleted_at", null)
+    .single()
+  
+  if (error || !data) {
+    return null
+  }
+  
+  return data
 }
 
 /**
@@ -53,7 +90,12 @@ export async function createContract(input: CreateContractInput): Promise<Contra
   
   // Validações
   validateNotEmpty(input.title, "Título")
-  validateAmount(input.totalValue)
+  // Validar valor baseado no tipo
+  if (input.valueType === 'monthly' && input.monthlyValue) {
+    validateAmount(input.monthlyValue)
+  } else {
+    validateAmount(input.totalValue)
+  }
   validateDateRange(input.startDate, input.endDate || null)
   
   // Validar que a entidade pertence ao workspace
@@ -72,19 +114,45 @@ export async function createContract(input: CreateContractInput): Promise<Contra
   const endDate = input.endDate ? (typeof input.endDate === 'string' ? parseDateISO(input.endDate) : input.endDate) : null
   
   // Criar contrato
+  const contractData: any = {
+    workspace_id: workspace.id,
+    counterparty_entity_id: input.counterpartyEntityId,
+    title: input.title,
+    description: input.description || null,
+    total_value: input.totalValue,
+    currency: input.currency || 'BRL',
+    status: 'draft',
+    start_date: startDate.toISOString().split('T')[0],
+    end_date: endDate ? endDate.toISOString().split('T')[0] : null,
+  }
+
+  if (input.valueType) {
+    contractData.value_type = input.valueType
+  }
+
+  if (input.monthlyValue) {
+    contractData.monthly_value = input.monthlyValue
+  }
+
+  if (input.recurrencePeriod) {
+    contractData.recurrence_period = input.recurrencePeriod
+  }
+
+  if (input.adjustmentIndex) {
+    contractData.adjustment_index = input.adjustmentIndex
+  }
+
+  if (input.adjustmentFrequency) {
+    contractData.adjustment_frequency = input.adjustmentFrequency
+  }
+
+  if (input.adjustmentPercentage !== undefined) {
+    contractData.adjustment_percentage = input.adjustmentPercentage
+  }
+
   const { data: contract, error } = await supabase
     .from("contracts")
-    .insert({
-      workspace_id: workspace.id,
-      counterparty_entity_id: input.counterpartyEntityId,
-      title: input.title,
-      description: input.description || null,
-      total_value: input.totalValue,
-      currency: input.currency || 'BRL',
-      status: 'draft',
-      start_date: startDate.toISOString().split('T')[0],
-      end_date: endDate ? endDate.toISOString().split('T')[0] : null,
-    })
+    .insert(contractData)
     .select()
     .single()
   
@@ -102,8 +170,9 @@ export async function createContract(input: CreateContractInput): Promise<Contra
   
   if (endDateObj && endDateObj > startDateObj) {
     try {
+      const recurrence = input.recurrencePeriod || 'monthly'
       const schedules = await generateContractSchedules(contract.id, {
-        recurrence: 'monthly',
+        recurrence: recurrence as 'monthly' | 'quarterly' | 'yearly',
         type: 'receivable', // Padrão: recebível
       })
       console.log(`[contracts:create] ${schedules.length} schedule(s) gerado(s) para contrato ${contract.id}`)
@@ -181,6 +250,45 @@ export async function updateContract(contractId: string, changes: UpdateContract
   
   if (changes.status) {
     updateData.status = changes.status
+  }
+
+  if (changes.totalValue !== undefined) {
+    validateAmount(changes.totalValue)
+    updateData.total_value = changes.totalValue
+  }
+
+  if (changes.monthlyValue !== undefined) {
+    validateAmount(changes.monthlyValue)
+    updateData.monthly_value = changes.monthlyValue
+  }
+
+  if (changes.valueType) {
+    updateData.value_type = changes.valueType
+  }
+
+  if (changes.recurrencePeriod) {
+    updateData.recurrence_period = changes.recurrencePeriod
+  }
+
+  if (changes.adjustmentIndex) {
+    updateData.adjustment_index = changes.adjustmentIndex
+  }
+
+  if (changes.adjustmentFrequency) {
+    updateData.adjustment_frequency = changes.adjustmentFrequency
+  }
+
+  if (changes.adjustmentPercentage !== undefined) {
+    updateData.adjustment_percentage = changes.adjustmentPercentage
+  }
+
+  if (changes.currency) {
+    updateData.currency = changes.currency
+  }
+
+  if (changes.startDate !== undefined) {
+    const startDate = typeof changes.startDate === 'string' ? parseDateISO(changes.startDate) : changes.startDate
+    updateData.start_date = startDate.toISOString().split('T')[0]
   }
   
   if (changes.endDate !== undefined) {
@@ -306,4 +414,46 @@ export async function listContracts(filters?: {
   }
   
   return data || []
+}
+
+/**
+ * Deleta um contrato (soft delete)
+ */
+export async function deleteContract(contractId: string): Promise<void> {
+  const supabase = await createClient()
+  const workspace = await getActiveWorkspace()
+  
+  // Buscar contrato
+  const { data: contract, error: fetchError } = await supabase
+    .from("contracts")
+    .select("*")
+    .eq("id", contractId)
+    .eq("workspace_id", workspace.id)
+    .is("deleted_at", null)
+    .single()
+  
+  if (fetchError || !contract) {
+    throw new Error("Contrato não encontrado")
+  }
+
+  // Verificar se pode deletar (apenas draft ou cancelled)
+  if (contract.status !== 'draft' && contract.status !== 'cancelled') {
+    throw new Error("Apenas contratos em rascunho ou cancelados podem ser deletados")
+  }
+
+  // Soft delete: marcar deleted_at
+  const { error } = await supabase
+    .from("contracts")
+    .update({
+      deleted_at: new Date().toISOString(),
+    })
+    .eq("id", contractId)
+    .eq("workspace_id", workspace.id)
+  
+  if (error) {
+    throw new Error(`Erro ao deletar contrato: ${error.message}`)
+  }
+  
+  // Gravar audit log
+  await logAudit('delete', 'contract', contractId, contract, null)
 }

@@ -2,7 +2,7 @@ import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { getActiveWorkspace } from "@/lib/workspace"
-import { listContracts, createContract, cancelContract } from "@/lib/contracts"
+import { listContracts, createContract, cancelContract, updateContract, deleteContract } from "@/lib/contracts"
 import { listSchedulesByContract } from "@/lib/schedules"
 import { listEntities } from "@/lib/entities"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,6 +13,15 @@ async function cancelContractAction(contractId: string) {
   "use server"
 
   await cancelContract(contractId)
+  revalidatePath("/app/contracts")
+  redirect("/app/contracts")
+}
+
+async function deleteContractAction(contractId: string) {
+  "use server"
+
+  await deleteContract(contractId)
+  revalidatePath("/app/contracts")
   redirect("/app/contracts")
 }
 
@@ -25,26 +34,40 @@ async function createContractAction(prevState: any, formData: FormData) {
     const title = formData.get("title") as string
     const description = formData.get("description") as string || null
     const totalValueStr = formData.get("total_value") as string
+    const monthlyValueStr = formData.get("monthly_value") as string
+    const valueType = formData.get("value_type") as string || 'total'
+    const recurrencePeriod = formData.get("recurrence_period") as string || 'monthly'
+    const adjustmentIndex = formData.get("adjustment_index") as string || 'NONE'
+    const adjustmentFrequency = formData.get("adjustment_frequency") as string || 'NONE'
+    const adjustmentPercentageStr = formData.get("adjustment_percentage") as string
     const currency = formData.get("currency") as string || 'BRL'
     const startDate = formData.get("start_date") as string
     const endDate = formData.get("end_date") as string || null
 
     // Validações básicas
-    if (!counterpartyEntityId || !title || !totalValueStr || !startDate) {
+    if (!counterpartyEntityId || !title || !startDate) {
       const missing = []
       if (!counterpartyEntityId) missing.push("counterparty_entity_id")
       if (!title) missing.push("title")
-      if (!totalValueStr) missing.push("total_value")
       if (!startDate) missing.push("start_date")
       console.error("[contracts:create] Campos obrigatórios faltando:", missing)
       return { ok: false, error: `Campos obrigatórios faltando: ${missing.join(", ")}` }
     }
 
-    // Parse valor (suporta vírgula ou ponto como separador decimal)
-    const totalValue = Number(totalValueStr.replace(',', '.'))
-    if (isNaN(totalValue) || totalValue <= 0) {
-      console.error("[contracts:create] Valor inválido:", totalValueStr)
-      return { ok: false, error: `Valor inválido: ${totalValueStr}` }
+    // Parse valores (suporta vírgula ou ponto como separador decimal)
+    const totalValue = totalValueStr ? Number(totalValueStr.replace(',', '.')) : null
+    const monthlyValue = monthlyValueStr ? Number(monthlyValueStr.replace(',', '.')) : null
+    const adjustmentPercentage = adjustmentPercentageStr ? Number(adjustmentPercentageStr.replace(',', '.')) : null
+
+    // Validar que pelo menos um valor foi informado
+    if (valueType === 'total' && (!totalValue || totalValue <= 0)) {
+      console.error("[contracts:create] Valor total inválido:", totalValueStr)
+      return { ok: false, error: "Valor total é obrigatório quando tipo é 'total'" }
+    }
+
+    if (valueType === 'monthly' && (!monthlyValue || monthlyValue <= 0)) {
+      console.error("[contracts:create] Valor mensal inválido:", monthlyValueStr)
+      return { ok: false, error: "Valor mensal é obrigatório quando tipo é 'monthly'" }
     }
 
     // Validar data (YYYY-MM-DD)
@@ -57,14 +80,33 @@ async function createContractAction(prevState: any, formData: FormData) {
     const workspace = await getActiveWorkspace()
     console.log("[contracts:create] workspace=", workspace.id, "counterparty=", counterpartyEntityId, "value=", totalValue, "title=", title)
 
+    // Calcular total_value baseado no tipo
+    let finalTotalValue = totalValue || 0
+    if (valueType === 'monthly' && monthlyValue && endDate && dateRegex.test(endDate)) {
+      // Calcular valor total baseado no período e valor mensal
+      const start = new Date(startDate + "T00:00:00")
+      const end = new Date(endDate + "T00:00:00")
+      const months = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 30)))
+      finalTotalValue = monthlyValue * months
+    } else if (valueType === 'monthly' && monthlyValue) {
+      // Se não tiver end_date, usar valor mensal como total (será ajustado depois)
+      finalTotalValue = monthlyValue
+    }
+
     const contract = await createContract({
       counterpartyEntityId,
       title,
       description,
-      totalValue,
+      totalValue: finalTotalValue,
       currency,
       startDate,
       endDate: endDate && dateRegex.test(endDate) ? endDate : null,
+      valueType: valueType as 'total' | 'monthly' | 'quarterly' | 'yearly',
+      monthlyValue: monthlyValue || undefined,
+      recurrencePeriod: recurrencePeriod as 'monthly' | 'quarterly' | 'yearly',
+      adjustmentIndex: adjustmentIndex as 'NONE' | 'IPCA' | 'IGPM' | 'CDI' | 'MANUAL' | 'CUSTOM',
+      adjustmentFrequency: adjustmentFrequency as 'NONE' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY',
+      adjustmentPercentage: adjustmentPercentage || undefined,
     })
 
     console.log("[contracts:create] Sucesso, contract.id=", contract.id)
@@ -158,6 +200,7 @@ export default async function ContractsPage() {
               entities={entities}
               schedulesByContract={schedulesByContract}
               onCancel={cancelContractAction}
+              onDelete={deleteContractAction}
             />
           </CardContent>
         </Card>

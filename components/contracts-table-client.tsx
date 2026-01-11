@@ -11,6 +11,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Pencil, Trash2, X } from "lucide-react"
 import type { Contract } from "@/lib/contracts"
 import type { ContractSchedule } from "@/lib/schedules"
 import { CancelContractDialog } from "@/components/governance/CancelContractDialog"
@@ -21,6 +32,7 @@ type ContractsTableClientProps = {
   entities: Array<{ id: string; legal_name: string }>
   schedulesByContract: Record<string, ContractSchedule[]>
   onCancel: (id: string) => Promise<void>
+  onDelete: (id: string) => Promise<void>
 }
 
 export function ContractsTableClient({
@@ -28,9 +40,11 @@ export function ContractsTableClient({
   entities,
   schedulesByContract,
   onCancel,
+  onDelete,
 }: ContractsTableClientProps) {
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null)
   const [error, setError] = useState<string | null>(null)
   const getEntityName = (entityId: string) => {
@@ -72,14 +86,38 @@ export function ContractsTableClient({
     setError(null)
     try {
       await onCancel(selectedContract.id)
+      window.location.reload()
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Erro ao cancelar contrato"
       setError(errorMessage)
-      return
-    } finally {
       setLoadingId(null)
+      return
     }
     setCancelDialogOpen(false)
+    setSelectedContract(null)
+  }
+
+  const handleDeleteClick = (contract: Contract) => {
+    setSelectedContract(contract)
+    setDeleteDialogOpen(true)
+    setError(null)
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!selectedContract) return
+    
+    setLoadingId(selectedContract.id)
+    setError(null)
+    try {
+      await onDelete(selectedContract.id)
+      window.location.reload()
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Erro ao deletar contrato"
+      setError(errorMessage)
+      setLoadingId(null)
+      return
+    }
+    setDeleteDialogOpen(false)
     setSelectedContract(null)
   }
 
@@ -147,22 +185,45 @@ export function ContractsTableClient({
                       Ver Cronograma
                     </Link>
                   </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    asChild
+                    title="Editar contrato"
+                  >
+                    <Link href={`/app/contracts/edit/${contract.id}`}>
+                      <Pencil className="h-4 w-4" />
+                    </Link>
+                  </Button>
                   {(() => {
                     const cancelInfo = getCancelInfo(contract)
                     if (cancelInfo.canCancel) {
                       return (
                         <Button
-                          variant="outline"
+                          variant="ghost"
                           size="sm"
                           onClick={() => handleCancelClick(contract)}
                           disabled={loadingId === contract.id}
+                          title="Cancelar contrato"
                         >
-                          Cancelar
+                          <X className="h-4 w-4" />
                         </Button>
                       )
                     }
                     return null
                   })()}
+                  {(contract.status === 'draft' || contract.status === 'cancelled') && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDeleteClick(contract)}
+                      disabled={loadingId === contract.id}
+                      title="Deletar contrato"
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </TableCell>
             </TableRow>
@@ -185,6 +246,29 @@ export function ContractsTableClient({
           futureSchedulesCount={getCancelInfo(selectedContract).futureCount}
           hasRealizedSchedules={getCancelInfo(selectedContract).hasRealized}
         />
+      )}
+      
+      {selectedContract && (
+        <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+              <AlertDialogDescription>
+                Tem certeza que deseja deletar o contrato "{selectedContract.title}"?
+                Esta ação não pode ser desfeita. O contrato será movido para a lixeira.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteConfirm}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Deletar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
       
       {error && (

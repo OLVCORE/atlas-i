@@ -473,7 +473,9 @@ export async function generateContractSchedules(
     throw new Error("Schedules já existem para este contrato. Use recalculateContractSchedules para regenerar.")
   }
 
-  const recurrence = options?.recurrence || 'none'
+  // Usar recurrence_period do contrato se disponível, senão usar opção ou padrão
+  const contractRecurrence = (contract as any).recurrence_period || options?.recurrence || 'monthly'
+  const recurrence = contractRecurrence === 'monthly' ? 'monthly' : contractRecurrence === 'quarterly' ? 'quarterly' : contractRecurrence === 'yearly' ? 'yearly' : (options?.recurrence || 'monthly')
   const scheduleType = options?.type || 'receivable'
 
   // Gerar datas baseado na recorrência
@@ -497,13 +499,22 @@ export async function generateContractSchedules(
     throw new Error("Nenhuma data gerada para os schedules")
   }
 
-  // Dividir o valor total entre as datas
-  const amounts = divideAmount(Number(contract.total_value), dates.length)
-
-  // Validar que a soma é exata
-  const totalScheduleAmount = sumAmounts(amounts)
-  if (!amountsMatch(totalScheduleAmount, Number(contract.total_value))) {
-    throw new Error(`Erro na distribuição de valores: esperado ${contract.total_value}, calculado ${totalScheduleAmount}`)
+  // Calcular valor por schedule
+  // Se tiver monthly_value e value_type = monthly, usar monthly_value
+  // Senão, dividir total_value entre as datas
+  let amounts: number[]
+  if ((contract as any).value_type === 'monthly' && (contract as any).monthly_value) {
+    // Usar valor mensal fixo para todos os schedules
+    const monthlyValue = Number((contract as any).monthly_value)
+    amounts = dates.map(() => monthlyValue)
+  } else {
+    // Dividir o valor total entre as datas
+    amounts = divideAmount(Number(contract.total_value), dates.length)
+    // Validar que a soma é exata
+    const totalScheduleAmount = sumAmounts(amounts)
+    if (!amountsMatch(totalScheduleAmount, Number(contract.total_value))) {
+      throw new Error(`Erro na distribuição de valores: esperado ${contract.total_value}, calculado ${totalScheduleAmount}`)
+    }
   }
 
   // Criar schedules
