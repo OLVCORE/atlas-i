@@ -127,7 +127,7 @@ BEGIN
       AND (p_entity_id IS NULL OR ci.entity_id = p_entity_id)
     GROUP BY date_trunc('month', 
       (date_trunc('month', ci.competence_month)::date + 
-       (LEAST(c.due_day, EXTRACT(DAY FROM (date_trunc('month', ci.competence_month) + INTERVAL '1 month' - INTERVAL '1 day'))::date))::integer - 1
+       (LEAST(c.due_day::integer, EXTRACT(DAY FROM (date_trunc('month', ci.competence_month) + INTERVAL '1 month' - INTERVAL '1 day'))::integer) - 1)
       )
     )::date
   ),
