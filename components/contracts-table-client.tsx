@@ -185,16 +185,15 @@ export function ContractsTableClient({
                       Ver Cronograma
                     </Link>
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    asChild
-                    title="Editar contrato"
-                  >
-                    <Link href={`/app/contracts/edit/${contract.id}`}>
+                  <Link href={`/app/contracts/edit/${contract.id}`}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      title="Editar contrato"
+                    >
                       <Pencil className="h-4 w-4" />
-                    </Link>
-                  </Button>
+                    </Button>
+                  </Link>
                   {(() => {
                     const cancelInfo = getCancelInfo(contract)
                     if (cancelInfo.canCancel) {

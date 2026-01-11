@@ -25,6 +25,14 @@ export type Contract = {
   end_date: string | null
   created_at: string
   updated_at: string
+  // Campos opcionais adicionados na migration MC15
+  value_type?: 'total' | 'monthly' | 'quarterly' | 'yearly'
+  monthly_value?: number | null
+  recurrence_period?: 'monthly' | 'quarterly' | 'yearly'
+  adjustment_index?: 'NONE' | 'IPCA' | 'IGPM' | 'CDI' | 'MANUAL' | 'CUSTOM'
+  adjustment_frequency?: 'NONE' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY'
+  adjustment_percentage?: number | null
+  deleted_at?: string | null
 }
 
 export type CreateContractInput = {
