@@ -51,7 +51,7 @@ export async function GET(
 
     const page = await browser.newPage()
     await page.setContent(html, { waitUntil: "networkidle0" })
-    const pdf = await page.pdf({
+    const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
       margin: {
@@ -64,7 +64,7 @@ export async function GET(
 
     await browser.close()
 
-    return new NextResponse(pdf, {
+    return new NextResponse(pdfBuffer as Buffer, {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
