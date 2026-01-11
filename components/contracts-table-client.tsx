@@ -254,7 +254,7 @@ export function ContractsTableClient({
             <AlertDialogHeader>
               <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
               <AlertDialogDescription>
-                Tem certeza que deseja deletar o contrato "{selectedContract.title}"?
+                Tem certeza que deseja deletar o contrato &quot;{selectedContract.title}&quot;?
                 Esta ação não pode ser desfeita. O contrato será movido para a lixeira.
               </AlertDialogDescription>
             </AlertDialogHeader>
