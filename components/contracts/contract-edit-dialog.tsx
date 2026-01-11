@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import {
   Dialog,
@@ -36,7 +36,7 @@ export function ContractEditDialog({
   const [discounts, setDiscounts] = useState<LineItem[]>([])
   const [loadingItems, setLoadingItems] = useState(false)
 
-  const loadLineItems = async () => {
+  const loadLineItems = useCallback(async () => {
     if (!contract) return
     
     try {
@@ -62,7 +62,7 @@ export function ContractEditDialog({
     } finally {
       setLoadingItems(false)
     }
-  }
+  }, [contract])
 
   // Load line items when dialog opens
   useEffect(() => {
