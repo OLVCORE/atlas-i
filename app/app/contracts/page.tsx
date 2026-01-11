@@ -315,22 +315,6 @@ export default async function ContractsPage() {
             />
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Contratos Cadastrados</CardTitle>
-          </CardHeader>
-          <CardContent>
-      <ContractsTableClient
-        contracts={contracts}
-        entities={entities}
-        schedulesByContract={schedulesByContract}
-        onCancel={cancelContractAction}
-        onDelete={deleteContractAction}
-        onUpdateAction={updateContractAction}
-      />
-          </CardContent>
-        </Card>
       </div>
     </div>
   )
