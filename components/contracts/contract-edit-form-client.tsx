@@ -289,9 +289,6 @@ export function ContractEditFormClient({ contract, entities, action }: ContractE
       </div>
 
       <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={() => router.push("/app/contracts")}>
-          Cancelar
-        </Button>
         <Button type="submit" disabled={pending}>
           {pending ? "Salvando..." : "Salvar Alterações"}
         </Button>
