@@ -20,6 +20,27 @@ async function updateContractAction(contractId: string, prevState: any, formData
     const adjustmentIndex = formData.get("adjustment_index") as string || 'NONE'
     const adjustmentFrequency = formData.get("adjustment_frequency") as string || 'NONE'
     const adjustmentPercentageStr = formData.get("adjustment_percentage") as string
+    
+    // Parse adjustment_percentage: aceita percentual (4.5%) ou decimal (0.045)
+    let adjustmentPercentage: number | null = null
+    if (adjustmentPercentageStr) {
+      let value = adjustmentPercentageStr.trim()
+      // Se terminar com %, remover e converter de percentual para decimal
+      if (value.endsWith('%')) {
+        value = value.slice(0, -1).trim()
+        const numValue = Number(value.replace(',', '.'))
+        if (!isNaN(numValue)) {
+          adjustmentPercentage = numValue / 100 // 4.5% -> 0.045
+        }
+      } else {
+        // Já é decimal
+        adjustmentPercentage = Number(value.replace(',', '.'))
+      }
+      // Validar que está entre 0 e 1 (decimal) ou entre 0 e 100 (percentual já convertido)
+      if (isNaN(adjustmentPercentage) || adjustmentPercentage < 0 || adjustmentPercentage > 1) {
+        adjustmentPercentage = null
+      }
+    }
     const currency = formData.get("currency") as string || 'BRL'
     const startDate = formData.get("start_date") as string
     const endDate = formData.get("end_date") as string || null
@@ -32,7 +53,6 @@ async function updateContractAction(contractId: string, prevState: any, formData
     // Parse valores
     const totalValue = totalValueStr ? Number(totalValueStr.replace(',', '.')) : null
     const monthlyValue = monthlyValueStr ? Number(monthlyValueStr.replace(',', '.')) : null
-    const adjustmentPercentage = adjustmentPercentageStr ? Number(adjustmentPercentageStr.replace(',', '.')) : null
 
     // Validar data
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/

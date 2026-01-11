@@ -225,16 +225,26 @@ export function ContractEditFormClient({ contract, entities, action }: ContractE
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <Label htmlFor="adjustment_percentage">Percentual de Reajuste (opcional)</Label>
+            <HelpTooltip contentKey="contracts.adjustment_percentage" />
           </div>
           <Input
             id="adjustment_percentage"
             name="adjustment_percentage"
-            type="number"
-            step="0.0001"
-            min="0"
-            max="1"
-            defaultValue={(contract as any).adjustment_percentage || ""}
-            placeholder="Ex: 0.045 para 4,5%"
+            type="text"
+            defaultValue={(contract as any).adjustment_percentage ? ((contract as any).adjustment_percentage * 100).toFixed(2) + '%' : ""}
+            placeholder="Ex: 4.5% ou 0.045 (aceita percentual ou decimal)"
+            onChange={(e) => {
+              // Converter percentual para decimal automaticamente
+              let value = e.target.value.trim()
+              if (value.endsWith('%')) {
+                value = value.slice(0, -1).trim()
+                const numValue = Number(value.replace(',', '.'))
+                if (!isNaN(numValue)) {
+                  // Converter de percentual para decimal (4.5% -> 0.045)
+                  e.target.value = (numValue / 100).toFixed(4)
+                }
+              }
+            }}
           />
         </div>
 

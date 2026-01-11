@@ -57,7 +57,27 @@ async function createContractAction(prevState: any, formData: FormData) {
     // Parse valores (suporta vírgula ou ponto como separador decimal)
     const totalValue = totalValueStr ? Number(totalValueStr.replace(',', '.')) : null
     const monthlyValue = monthlyValueStr ? Number(monthlyValueStr.replace(',', '.')) : null
-    const adjustmentPercentage = adjustmentPercentageStr ? Number(adjustmentPercentageStr.replace(',', '.')) : null
+    
+    // Parse adjustment_percentage: aceita percentual (4.5%) ou decimal (0.045)
+    let adjustmentPercentage: number | null = null
+    if (adjustmentPercentageStr) {
+      let value = adjustmentPercentageStr.trim()
+      // Se terminar com %, remover e converter de percentual para decimal
+      if (value.endsWith('%')) {
+        value = value.slice(0, -1).trim()
+        const numValue = Number(value.replace(',', '.'))
+        if (!isNaN(numValue)) {
+          adjustmentPercentage = numValue / 100 // 4.5% -> 0.045
+        }
+      } else {
+        // Já é decimal
+        adjustmentPercentage = Number(value.replace(',', '.'))
+      }
+      // Validar que está entre 0 e 1 (decimal) ou entre 0 e 100 (percentual já convertido)
+      if (isNaN(adjustmentPercentage) || adjustmentPercentage < 0 || adjustmentPercentage > 1) {
+        adjustmentPercentage = null
+      }
+    }
 
     // Validar que pelo menos um valor foi informado
     if (valueType === 'total' && (!totalValue || totalValue <= 0)) {
