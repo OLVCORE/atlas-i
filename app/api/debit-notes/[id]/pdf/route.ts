@@ -64,7 +64,10 @@ export async function GET(
 
     await browser.close()
 
-    return new NextResponse(pdfBuffer as Buffer, {
+    // Converter Buffer para Uint8Array para NextResponse
+    const pdfArray = new Uint8Array(pdfBuffer)
+
+    return new NextResponse(pdfArray, {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
