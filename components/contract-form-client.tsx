@@ -28,6 +28,33 @@ export function ContractFormClient({ entities, action }: ContractFormClientProps
     }
   }, [state?.ok, state?.message, router])
 
+  // Atualizar label do valor mensal baseado no tipo de valor
+  useEffect(() => {
+    const valueTypeSelect = document.getElementById('value_type') as HTMLSelectElement
+    const monthlyValueLabel = document.getElementById('monthly_value_required')
+    const monthlyValueOptional = document.getElementById('monthly_value_optional')
+    const monthlyValueInput = document.getElementById('monthly_value') as HTMLInputElement
+
+    const updateMonthlyLabel = () => {
+      if (valueTypeSelect?.value === 'monthly') {
+        monthlyValueLabel?.classList.remove('hidden')
+        monthlyValueOptional?.classList.add('hidden')
+        monthlyValueInput?.setAttribute('required', 'required')
+      } else {
+        monthlyValueLabel?.classList.add('hidden')
+        monthlyValueOptional?.classList.remove('hidden')
+        monthlyValueInput?.removeAttribute('required')
+      }
+    }
+
+    valueTypeSelect?.addEventListener('change', updateMonthlyLabel)
+    updateMonthlyLabel() // Executar na montagem
+
+    return () => {
+      valueTypeSelect?.removeEventListener('change', updateMonthlyLabel)
+    }
+  }, [])
+
   return (
     <form ref={formRef} action={formAction} className="space-y-4">
       {state?.ok === false && state.error && (

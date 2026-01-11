@@ -182,19 +182,21 @@ export function ContractEditFormClient({ contract, entities, action }: ContractE
                   const response = await fetch(`/api/indices/bcb?index=${index}&startDate=${startDate}&endDate=${endDate}&accumulated=true`)
                   const data = await response.json()
                   
-                  if (data.error) {
-                    alert(`Erro: ${data.error}`)
+                  if (!response.ok || data.error) {
+                    alert(`Erro: ${data.error || 'Erro ao buscar índice do Banco Central'}`)
                     return
                   }
 
                   const percentageInput = document.getElementById('adjustment_percentage') as HTMLInputElement
-                  if (percentageInput) {
-                    percentageInput.value = (data.accumulated / 100).toFixed(4)
+                  if (percentageInput && data.accumulated !== undefined) {
+                    // Mostrar como percentual no input (4.5%), mas será convertido para decimal no submit
+                    percentageInput.value = data.accumulated.toFixed(2) + '%'
                   }
                   
                   alert(`Índice ${index} acumulado no período: ${data.accumulated.toFixed(2)}%`)
-                } catch (error) {
-                  alert('Erro ao buscar índice do Banco Central')
+                } catch (error: any) {
+                  console.error('[BCB] Erro ao buscar índice:', error)
+                  alert(`Erro ao buscar índice do Banco Central: ${error.message || 'Erro desconhecido'}`)
                 }
               }}
               title="Buscar índice do Banco Central"
