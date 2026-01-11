@@ -7,13 +7,25 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { HelpTooltip } from "@/components/help/HelpTooltip"
+import { LineItemsEditor, type LineItem } from "./contracts/line-items-editor"
 
 type ContractFormClientProps = {
   entities: Array<{ id: string; legal_name: string; type: string }>
   action: (prevState: any, formData: FormData) => Promise<{ ok: boolean; error?: string; message?: string }>
+  expenses?: LineItem[]
+  discounts?: LineItem[]
+  onExpensesChange?: (items: LineItem[]) => void
+  onDiscountsChange?: (items: LineItem[]) => void
 }
 
-export function ContractFormClient({ entities, action }: ContractFormClientProps) {
+export function ContractFormClient({ 
+  entities, 
+  action,
+  expenses = [],
+  discounts = [],
+  onExpensesChange,
+  onDiscountsChange,
+}: ContractFormClientProps) {
   const [state, formAction] = useFormState(action, { ok: true })
   const formRef = useRef<HTMLFormElement>(null)
   const router = useRouter()

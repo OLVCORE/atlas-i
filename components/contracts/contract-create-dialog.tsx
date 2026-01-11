@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { ContractFormClient } from "@/components/contract-form-client"
+import type { LineItem } from "./line-items-editor"
 
 type ContractCreateDialogProps = {
   open: boolean
@@ -27,11 +28,15 @@ export function ContractCreateDialog({
 }: ContractCreateDialogProps) {
   const router = useRouter()
   const [isSuccess, setIsSuccess] = useState(false)
+  const [expenses, setExpenses] = useState<LineItem[]>([])
+  const [discounts, setDiscounts] = useState<LineItem[]>([])
 
   // Reset success state when dialog opens
   useEffect(() => {
     if (open) {
       setIsSuccess(false)
+      setExpenses([])
+      setDiscounts([])
     }
   }, [open])
 
@@ -56,7 +61,21 @@ export function ContractCreateDialog({
         <div className="py-4">
           <ContractFormClient
             entities={entities}
+            expenses={expenses}
+            discounts={discounts}
+            onExpensesChange={setExpenses}
+            onDiscountsChange={setDiscounts}
             action={async (prevState, formData) => {
+              // Adicionar expenses e discounts ao FormData
+              expenses.forEach((item, index) => {
+                formData.append(`expense_${index}_description`, item.description)
+                formData.append(`expense_${index}_amount`, item.amount.toString())
+              })
+              discounts.forEach((item, index) => {
+                formData.append(`discount_${index}_description`, item.description)
+                formData.append(`discount_${index}_amount`, item.amount.toString())
+              })
+              
               const result = await onCreateAction(prevState, formData)
               if (result.ok) {
                 handleSuccess()
