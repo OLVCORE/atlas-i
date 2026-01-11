@@ -21,13 +21,13 @@ export function ContractEditFormClient({ contract, entities, action }: ContractE
   const router = useRouter()
   const pending = state?.ok === undefined
 
-  // Limpar formulário após sucesso e refresh da página
+  // Limpar formulário após sucesso (quando usado em modal, não redireciona)
   useEffect(() => {
     if (state?.ok === true && state.message) {
-      // Refresh para atualizar a lista
-      router.push("/app/contracts")
+      formRef.current?.reset()
+      // Não redireciona quando usado em modal - o modal controla o fechamento
     }
-  }, [state?.ok, state?.message, router])
+  }, [state?.ok, state?.message])
 
   return (
     <form ref={formRef} action={formAction} className="space-y-4">

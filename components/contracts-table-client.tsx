@@ -3,6 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import { ContractEditDialog } from "@/components/contracts/contract-edit-dialog"
 import {
   Table,
   TableBody,
@@ -29,10 +30,11 @@ import { canCancelContract } from "@/lib/governance/state-transitions"
 
 type ContractsTableClientProps = {
   contracts: Contract[]
-  entities: Array<{ id: string; legal_name: string }>
+  entities: Array<{ id: string; legal_name: string; type: string }>
   schedulesByContract: Record<string, ContractSchedule[]>
   onCancel: (id: string) => Promise<void>
   onDelete: (id: string) => Promise<void>
+  onUpdateAction: (contractId: string, prevState: any, formData: FormData) => Promise<{ ok: boolean; error?: string; message?: string }>
 }
 
 export function ContractsTableClient({
@@ -41,10 +43,12 @@ export function ContractsTableClient({
   schedulesByContract,
   onCancel,
   onDelete,
+  onUpdateAction,
 }: ContractsTableClientProps) {
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null)
   const [error, setError] = useState<string | null>(null)
   const getEntityName = (entityId: string) => {
