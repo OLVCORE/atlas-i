@@ -228,6 +228,40 @@ async function createContractAction(prevState: any, formData: FormData) {
     })
 
     console.log("[contracts:create] Sucesso, contract.id=", contract.id)
+
+    // Processar line items (expenses e discounts)
+    const expenseItems: Array<{ description?: string | null; amount: number }> = []
+    const discountItems: Array<{ description?: string | null; amount: number }> = []
+
+    // Coletar expenses
+    for (let i = 0; formData.has(`expense_${i}_amount`); i++) {
+      const description = formData.get(`expense_${i}_description`) as string || null
+      const amountStr = formData.get(`expense_${i}_amount`) as string
+      const amount = Number(amountStr.replace(',', '.'))
+      if (!isNaN(amount) && amount !== 0) {
+        expenseItems.push({ description, amount })
+      }
+    }
+
+    // Coletar discounts
+    for (let i = 0; formData.has(`discount_${i}_amount`); i++) {
+      const description = formData.get(`discount_${i}_description`) as string || null
+      const amountStr = formData.get(`discount_${i}_amount`) as string
+      const amount = Number(amountStr.replace(',', '.'))
+      if (!isNaN(amount) && amount !== 0) {
+        // Descontos são salvos como valores negativos
+        discountItems.push({ description, amount: -Math.abs(amount) })
+      }
+    }
+
+    // Criar line items
+    if (expenseItems.length > 0 || discountItems.length > 0) {
+      const allItems = [
+        ...expenseItems.map(item => ({ ...item, type: 'expense' as const })),
+        ...discountItems.map(item => ({ ...item, type: 'discount' as const })),
+      ]
+      await createContractLineItems(contract.id, allItems)
+    }
     try {
       revalidatePath("/app/contracts")
       revalidatePath("/app/schedules")

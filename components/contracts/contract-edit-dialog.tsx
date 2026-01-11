@@ -14,7 +14,6 @@ import { Button } from "@/components/ui/button"
 import { ContractEditFormClient } from "./contract-edit-form-client"
 import type { Contract } from "@/lib/contracts"
 import type { LineItem } from "./line-items-editor"
-import { listContractLineItems } from "@/lib/contract-line-items"
 
 type ContractEditDialogProps = {
   open: boolean
@@ -50,13 +49,18 @@ export function ContractEditDialog({
     if (!contract) return
     
     try {
-      const items = await listContractLineItems(contract.id)
-      const expensesItems: LineItem[] = items
-        .filter(item => item.type === 'expense')
-        .map(item => ({ id: item.id, description: item.description || "", amount: item.amount }))
-      const discountsItems: LineItem[] = items
-        .filter(item => item.type === 'discount')
-        .map(item => ({ id: item.id, description: item.description || "", amount: item.amount }))
+      const response = await fetch(`/api/contracts/${contract.id}/line-items`)
+      if (!response.ok) {
+        throw new Error("Erro ao carregar itens")
+      }
+      const data = await response.json()
+      
+      const expensesItems: LineItem[] = data.items
+        .filter((item: any) => item.type === 'expense')
+        .map((item: any) => ({ id: item.id, description: item.description || "", amount: item.amount }))
+      const discountsItems: LineItem[] = data.items
+        .filter((item: any) => item.type === 'discount')
+        .map((item: any) => ({ id: item.id, description: item.description || "", amount: Math.abs(item.amount) }))
       
       setExpenses(expensesItems)
       setDiscounts(discountsItems)
