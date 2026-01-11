@@ -208,3 +208,8 @@ Use HTML e variáveis do Go Template:
 - [Supabase Email Templates](https://supabase.com/docs/guides/auth/auth-email-templates)
 - [Supabase SMTP Configuration](https://supabase.com/docs/guides/auth/auth-smtp)
 
+
+
+
+
+

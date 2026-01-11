@@ -106,6 +106,13 @@ export const navGroups: NavGroup[] = [
         description: "Contratos e projetos",
       },
       {
+        label: "Notas de Débito",
+        href: "/app/debit-notes",
+        icon: Receipt,
+        group: "Operações",
+        description: "Notas de débito para recebíveis",
+      },
+      {
         label: "Cronogramas",
         href: "/app/schedules",
         icon: BarChart3,
