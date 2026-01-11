@@ -458,11 +458,12 @@ export async function generateContractSchedules(
     throw new Error("Contrato não encontrado")
   }
 
-  // Verificar se já existem schedules
+  // Verificar se já existem schedules (não deletados)
   const { data: existingSchedules, error: existingError } = await supabase
     .from("contract_schedules")
     .select("id")
     .eq("contract_id", contractId)
+    .is("deleted_at", null)
     .limit(1)
 
   if (existingError) {
@@ -610,12 +611,13 @@ export async function listSchedulesByContract(contractId: string): Promise<Contr
   const supabase = await createClient()
   const workspace = await getActiveWorkspace()
 
-  // Validar que o contrato existe e pertence ao workspace
+  // Validar que o contrato existe e pertence ao workspace (não deletado)
   const { data: contract, error: contractError } = await supabase
     .from("contracts")
     .select("id")
     .eq("id", contractId)
     .eq("workspace_id", workspace.id)
+    .is("deleted_at", null)
     .single()
 
   if (contractError || !contract) {

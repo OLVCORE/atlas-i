@@ -449,17 +449,34 @@ export async function deleteContract(contractId: string): Promise<void> {
     throw new Error("Apenas contratos em rascunho ou cancelados podem ser deletados")
   }
 
-  // Soft delete: marcar deleted_at
+  const deletedAt = new Date().toISOString()
+
+  // Soft delete: marcar deleted_at no contrato
   const { error } = await supabase
     .from("contracts")
     .update({
-      deleted_at: new Date().toISOString(),
+      deleted_at: deletedAt,
     })
     .eq("id", contractId)
     .eq("workspace_id", workspace.id)
   
   if (error) {
     throw new Error(`Erro ao deletar contrato: ${error.message}`)
+  }
+
+  // Marcar todos os schedules do contrato como deletados também
+  const { error: schedulesError } = await supabase
+    .from("contract_schedules")
+    .update({
+      deleted_at: deletedAt,
+    })
+    .eq("contract_id", contractId)
+    .eq("workspace_id", workspace.id)
+    .is("deleted_at", null)
+
+  if (schedulesError) {
+    console.error(`[contracts:delete] Erro ao marcar schedules como deletados: ${schedulesError.message}`)
+    // Não falhar o delete se houver erro nos schedules, mas logar
   }
   
   // Gravar audit log
