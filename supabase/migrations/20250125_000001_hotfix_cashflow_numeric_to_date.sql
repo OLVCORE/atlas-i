@@ -103,7 +103,7 @@ BEGIN
     SELECT 
       date_trunc('month', 
         (date_trunc('month', ci.competence_month)::date + 
-         (LEAST(c.due_day, EXTRACT(DAY FROM (date_trunc('month', ci.competence_month) + INTERVAL '1 month' - INTERVAL '1 day'))::date))::integer - 1
+         (LEAST(c.due_day::integer, EXTRACT(DAY FROM (date_trunc('month', ci.competence_month) + INTERVAL '1 month' - INTERVAL '1 day'))::integer) - 1)
         )
       )::date AS month_start,
       0 AS planned_income, -- Cartões são sempre despesas
@@ -116,12 +116,12 @@ BEGIN
       -- Filtrar por mês de pagamento calculado
       AND date_trunc('month', 
         (date_trunc('month', ci.competence_month)::date + 
-         (LEAST(c.due_day, EXTRACT(DAY FROM (date_trunc('month', ci.competence_month) + INTERVAL '1 month' - INTERVAL '1 day'))::date))::integer - 1
+         (LEAST(c.due_day::integer, EXTRACT(DAY FROM (date_trunc('month', ci.competence_month) + INTERVAL '1 month' - INTERVAL '1 day'))::integer) - 1)
         )
       )::date >= p_from_month
       AND date_trunc('month', 
         (date_trunc('month', ci.competence_month)::date + 
-         (LEAST(c.due_day, EXTRACT(DAY FROM (date_trunc('month', ci.competence_month) + INTERVAL '1 month' - INTERVAL '1 day'))::date))::integer - 1
+         (LEAST(c.due_day::integer, EXTRACT(DAY FROM (date_trunc('month', ci.competence_month) + INTERVAL '1 month' - INTERVAL '1 day'))::integer) - 1)
         )
       )::date <= p_to_month
       AND (p_entity_id IS NULL OR ci.entity_id = p_entity_id)
