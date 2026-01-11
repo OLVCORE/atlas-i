@@ -446,16 +446,17 @@ export async function generateContractSchedules(
   const supabase = await createClient()
   const workspace = await getActiveWorkspace()
 
-  // Buscar contrato
+  // Buscar contrato (não deletado)
   const { data: contract, error: contractError } = await supabase
     .from("contracts")
     .select("*")
     .eq("id", contractId)
     .eq("workspace_id", workspace.id)
+    .is("deleted_at", null)
     .single()
 
   if (contractError || !contract) {
-    throw new Error("Contrato não encontrado")
+    throw new Error("Contrato não encontrado ou foi deletado")
   }
 
   // Verificar se já existem schedules (não deletados)
