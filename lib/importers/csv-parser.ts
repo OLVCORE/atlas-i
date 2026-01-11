@@ -86,14 +86,35 @@ function normalizeColumnName(name: string): string {
 
 /**
  * Encontra índice de coluna por nome (com variações)
+ * Tenta múltiplas estratégias de matching para ser mais flexível
  */
 function findColumnIndex(headers: string[], patterns: string[]): number | null {
+  const normalizedHeaders = headers.map(h => normalizeColumnName(h))
+  
   for (const pattern of patterns) {
-    const index = headers.findIndex(h => 
-      normalizeColumnName(h).includes(pattern.toLowerCase())
-    )
+    const normalizedPattern = pattern.toLowerCase().trim()
+    
+    // Estratégia 1: Match exato
+    let index = normalizedHeaders.findIndex(h => h === normalizedPattern)
+    if (index !== -1) return index
+    
+    // Estratégia 2: Header contém o padrão (ex: "data_lancamento" contém "data")
+    index = normalizedHeaders.findIndex(h => h.includes(normalizedPattern))
+    if (index !== -1) return index
+    
+    // Estratégia 3: Padrão contém o header (ex: "data" contém "dat")
+    index = normalizedHeaders.findIndex(h => normalizedPattern.includes(h))
+    if (index !== -1) return index
+    
+    // Estratégia 4: Match parcial mais flexível (remove espaços, underscores, etc)
+    const patternClean = normalizedPattern.replace(/[_\s-]/g, '')
+    index = normalizedHeaders.findIndex(h => {
+      const headerClean = h.replace(/[_\s-]/g, '')
+      return headerClean === patternClean || headerClean.includes(patternClean) || patternClean.includes(headerClean)
+    })
     if (index !== -1) return index
   }
+  
   return null
 }
 
@@ -182,9 +203,21 @@ function parseDate(value: string): string | null {
   }
   
   // Tentar parse direto
-  const date = new Date(cleaned)
-  if (!isNaN(date.getTime())) {
-    return date.toISOString().split('T')[0]
+  try {
+    const date = new Date(cleaned)
+    // Validar que a data é válida e está em um range razoável (1900-2100)
+    if (!isNaN(date.getTime())) {
+      const year = date.getFullYear()
+      if (year >= 1900 && year <= 2100) {
+        const isoDate = date.toISOString().split('T')[0]
+        // Validar formato ISO (YYYY-MM-DD)
+        if (/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) {
+          return isoDate
+        }
+      }
+    }
+  } catch (dateError) {
+    // Ignorar erros de parsing
   }
   
   return null
@@ -215,6 +248,36 @@ function determineType(
 }
 
 /**
+ * Detecta automaticamente a linha que contém os headers reais
+ */
+function detectHeaderRow(csvContent: string): number {
+  const lines = csvContent.split('\n').slice(0, 20) // Verificar apenas as primeiras 20 linhas
+  
+  // Palavras-chave que indicam uma linha de header
+  const headerKeywords = [
+    'data', 'date', 'dat', 'dt',
+    'lancamento', 'lançamento', 'lanc', 'histórico', 'historico', 'hist',
+    'descrição', 'descricao', 'desc', 'description',
+    'valor', 'value', 'debito', 'débito', 'debit', 'credito', 'crédito', 'credit',
+    'saldo', 'balance', 'ag', 'agencia', 'agência'
+  ]
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].toLowerCase()
+    // Contar quantas palavras-chave aparecem nesta linha
+    const matches = headerKeywords.filter(keyword => line.includes(keyword)).length
+    
+    // Se encontrar 2 ou mais palavras-chave, provavelmente é a linha de header
+    if (matches >= 2) {
+      return i
+    }
+  }
+  
+  // Se não encontrou, assume que o header está na primeira linha (índice 0)
+  return 0
+}
+
+/**
  * Parse de CSV/Excel
  */
 export function parseCSV(csvContent: string, options?: {
@@ -224,13 +287,76 @@ export function parseCSV(csvContent: string, options?: {
   const rows: ParsedRow[] = []
   const errors: Array<{ row: number; message: string; raw: Record<string, string> }> = []
   
-  // Parse CSV
-  const parseResult = Papa.parse(csvContent, {
-    header: true,
-    skipEmptyLines: true,
-    transformHeader: (header) => header.trim(),
-    transform: (value) => value.trim(),
-  })
+  // Detectar linha de header automaticamente
+  const headerRowIndex = options?.skipLines !== undefined ? options.skipLines : detectHeaderRow(csvContent)
+  
+  // Parse CSV - se header não está na primeira linha, precisa fazer parse manual
+  let parseResult: Papa.ParseResult<any>
+  
+  if (headerRowIndex > 0) {
+    // Parse sem header primeiro para pegar todas as linhas
+    const parseWithoutHeader = Papa.parse(csvContent, {
+      header: false,
+      skipEmptyLines: false, // Não pular vazias ainda para manter índices
+      transform: (value) => (value || '').toString().trim(),
+    })
+    
+    const allRows = parseWithoutHeader.data as string[][]
+    
+    // Filtrar linhas vazias manualmente
+    const nonEmptyRows = allRows.filter(row => row.some(cell => cell && cell.trim().length > 0))
+    
+    if (nonEmptyRows.length <= headerRowIndex) {
+      return {
+        rows: [],
+        errors: [{ row: 0, message: 'Arquivo não contém dados válidos após detecção de header', raw: {} }],
+        metadata: {
+          totalRows: nonEmptyRows.length,
+          validRows: 0,
+          invalidRows: nonEmptyRows.length,
+          detectedFormat: 'unknown',
+        },
+      }
+    }
+    
+    // Encontrar a linha de header real nos dados não vazios
+    let actualHeaderRowIndex = 0
+    for (let i = 0; i < Math.min(headerRowIndex + 5, nonEmptyRows.length); i++) {
+      const rowText = nonEmptyRows[i].join(' ').toLowerCase()
+      if (rowText.includes('data') && (rowText.includes('lançamento') || rowText.includes('lancamento') || rowText.includes('valor'))) {
+        actualHeaderRowIndex = i
+        break
+      }
+    }
+    
+    // Usar a linha detectada como header
+    const headerRow = nonEmptyRows[actualHeaderRowIndex] || nonEmptyRows[0]
+    const dataRows = nonEmptyRows.slice(actualHeaderRowIndex + 1)
+    
+    // Converter para formato com header
+    const dataWithHeaders = dataRows.map(row => {
+      const obj: Record<string, string> = {}
+      headerRow.forEach((header, index) => {
+        const headerKey = header.trim() || `col_${index}`
+        obj[headerKey] = (row[index] || '').toString().trim()
+      })
+      return obj
+    })
+    
+    parseResult = {
+      data: dataWithHeaders,
+      errors: parseWithoutHeader.errors || [],
+      meta: parseWithoutHeader.meta || {},
+    } as Papa.ParseResult<any>
+  } else {
+    // Parse normal com header na primeira linha
+    parseResult = Papa.parse(csvContent, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: (header) => header.trim(),
+      transform: (value) => value.trim(),
+    })
+  }
   
   if (parseResult.errors.length > 0) {
     errors.push(...parseResult.errors.map(err => ({
@@ -258,20 +384,72 @@ export function parseCSV(csvContent: string, options?: {
   const headers = Object.keys(data[0])
   const format = options?.format || detectFormat(headers)
   
-  // Encontrar índices das colunas
-  const dateIndex = findColumnIndex(headers, ['data', 'date', 'data_lancamento'])
-  const descriptionIndex = findColumnIndex(headers, ['descrição', 'descricao', 'historico', 'historico_abreviado', 'desc', 'description', 'estabelecimento'])
-  const debitIndex = findColumnIndex(headers, ['debito', 'debit', 'saida', 'saída', 'valor_saida'])
-  const creditIndex = findColumnIndex(headers, ['credito', 'credit', 'entrada', 'valor_entrada'])
-  const amountIndex = findColumnIndex(headers, ['valor', 'value', 'amount', 'total', 'saldo'])
-  const accountIndex = findColumnIndex(headers, ['conta', 'account', 'conta_corrente'])
-  const categoryIndex = findColumnIndex(headers, ['categoria', 'category', 'tipo'])
+  // Encontrar índices das colunas (padrões expandidos para maior compatibilidade)
+  const dateIndex = findColumnIndex(headers, [
+    'data', 'date', 'data_lancamento', 'data_lanc', 'dat', 'dt',
+    'data movimentacao', 'data movimentação', 'data movimento',
+    'data_transacao', 'data_trans', 'data_transaction'
+  ])
+  const descriptionIndex = findColumnIndex(headers, [
+    'descrição', 'descricao', 'desc', 'description', 'descri',
+    'historico', 'historico_abreviado', 'hist', 'histórico',
+    'estabelecimento', 'estab', 'estabelec',
+    'detalhes', 'detalhe', 'obs', 'observacao', 'observação',
+    'lançamento', 'lancamento', 'lanc', 'transacao', 'transação'
+  ])
+  const debitIndex = findColumnIndex(headers, [
+    'debito', 'debit', 'deb', 'saida', 'saída', 'said',
+    'valor_saida', 'valor_saída', 'valor_said', 'saidas', 'saídas',
+    'despesa', 'expense', 'out', 'outflow'
+  ])
+  const creditIndex = findColumnIndex(headers, [
+    'credito', 'credit', 'cred', 'entrada', 'entrad',
+    'valor_entrada', 'valor_entrad', 'entradas',
+    'receita', 'income', 'in', 'inflow'
+  ])
+  const amountIndex = findColumnIndex(headers, [
+    'valor', 'value', 'amount', 'val', 'vlr',
+    'total', 'tot', 'saldo', 'balance',
+    'montante', 'mont', 'quantia'
+  ])
+  const accountIndex = findColumnIndex(headers, [
+    'conta', 'account', 'acc', 'conta_corrente', 'conta_corr',
+    'numero_conta', 'numero_conta', 'num_conta', 'n_conta'
+  ])
+  const categoryIndex = findColumnIndex(headers, [
+    'categoria', 'category', 'cat', 'tipo', 'type',
+    'classificacao', 'classificação', 'classif'
+  ])
   
-  // Validar colunas obrigatórias
+  // Função auxiliar para filtrar headers válidos (remover caracteres não imprimíveis/binários)
+  const getValidHeaders = (headers: string[]): string => {
+    const validHeaders = headers
+      .map(h => h.trim())
+      .filter(h => {
+        // Remover headers que parecem ser binários ou corrompidos
+        if (h.length === 0) return false
+        if (h.length > 100) return false // Headers muito longos provavelmente são binários
+        // Verificar se tem muitos caracteres não imprimíveis
+        const nonPrintable = (h.match(/[^\x20-\x7E]/g) || []).length
+        return nonPrintable < h.length * 0.3 // Menos de 30% de caracteres não imprimíveis
+      })
+      .slice(0, 20) // Limitar a 20 headers para não poluir a mensagem
+    
+    return validHeaders.length > 0 
+      ? validHeaders.join(', ')
+      : 'Nenhuma coluna válida detectada (arquivo pode estar corrompido ou em formato não suportado)'
+  }
+  
+  // Validar colunas obrigatórias (com mensagem mais informativa)
   if (dateIndex === null) {
+    const headersDisplay = getValidHeaders(headers)
     return {
       rows: [],
-      errors: [{ row: 0, message: 'Coluna de data não encontrada. Procure por: Data, Date', raw: {} }],
+      errors: [{
+        row: 0,
+        message: `Coluna de data não encontrada. Colunas disponíveis: ${headersDisplay}. Procure por: Data, Date, Data Lancamento, Data Movimentação`,
+        raw: {}
+      }],
       metadata: {
         totalRows: data.length,
         validRows: 0,
@@ -282,9 +460,14 @@ export function parseCSV(csvContent: string, options?: {
   }
   
   if (descriptionIndex === null) {
+    const headersDisplay = getValidHeaders(headers)
     return {
       rows: [],
-      errors: [{ row: 0, message: 'Coluna de descrição não encontrada. Procure por: Descrição, Histórico, Description', raw: {} }],
+      errors: [{
+        row: 0,
+        message: `Coluna de descrição não encontrada. Colunas disponíveis: ${headersDisplay}. Procure por: Descrição, Histórico, Description, Estabelecimento`,
+        raw: {}
+      }],
       metadata: {
         totalRows: data.length,
         validRows: 0,
@@ -309,13 +492,35 @@ export function parseCSV(csvContent: string, options?: {
       const accountName = accountIndex !== null ? row[headers[accountIndex]] : undefined
       const category = categoryIndex !== null ? row[headers[categoryIndex]] : undefined
       
+      // Filtrar linhas que não são transações (saldo, headers, etc)
+      const descriptionLower = (descriptionValue || '').toString().toLowerCase().trim()
+      
+      // Normalizar texto removendo acentos e caracteres especiais para melhor matching
+      const normalizeText = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ' ')
+      
+      const skipPatterns = [
+        'saldo anterior',
+        'saldo total disponivel',
+        'saldo disponivel',
+        'lancamentos',
+        'lancamento',
+      ]
+      
+      const normalizedDesc = normalizeText(descriptionLower)
+      
+      // Se a descrição corresponde a um padrão de linha a ser ignorada, pular silenciosamente
+      if (skipPatterns.some(pattern => normalizedDesc.includes(normalizeText(pattern)))) {
+        continue // Pular sem reportar erro
+      }
+      
+      // Filtrar também linhas que têm valor zerado E descrição contém "saldo" (pode ser linha de saldo)
+      if (descriptionLower.includes('saldo') && (!amountValue || amountValue === 0) && (!debitValue || debitValue === 0) && (!creditValue || creditValue === 0)) {
+        continue // Pular linhas de saldo sem valor de transação
+      }
+      
       // Validar campos obrigatórios
-      if (!dateValue || !descriptionValue) {
-        errors.push({
-          row: rowNumber,
-          message: 'Data ou descrição vazios',
-          raw: row,
-        })
+      if (!dateValue || !descriptionValue || descriptionValue.trim().length === 0) {
+        // Pular linhas vazias sem reportar erro (já foram filtradas acima)
         continue
       }
       

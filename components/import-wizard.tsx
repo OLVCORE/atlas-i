@@ -75,8 +75,10 @@ export function ImportWizard({
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
     if (selectedFile) {
-      if (!selectedFile.name.endsWith('.csv')) {
-        alert('Por favor, selecione um arquivo CSV (.csv)')
+      const allowedExtensions = ['.csv', '.xls', '.xlsx', '.txt']
+      const fileExtension = selectedFile.name.toLowerCase().substring(selectedFile.name.lastIndexOf('.'))
+      if (!allowedExtensions.includes(fileExtension)) {
+        alert('Por favor, selecione um arquivo CSV, XLS, XLSX ou TXT')
         return
       }
       
@@ -148,6 +150,13 @@ export function ImportWizard({
       const data: ImportResult = await response.json()
       setResult(data)
 
+      if (!response.ok || !data.ok) {
+        // Mostrar erro na tela
+        const errorMessage = data.error || `Erro ${response.status}: ${response.statusText}`
+        alert(`Erro ao importar: ${errorMessage}`)
+        return
+      }
+
       if (data.ok && data.result?.success) {
         setStep(3)
         if (onImportComplete) {
@@ -202,7 +211,7 @@ export function ImportWizard({
                 />
               </Label>
               <p className="mt-2 text-xs text-gray-500">
-                Formatos suportados: CSV (.csv) - Máximo 10MB
+                Formatos suportados: CSV, XLS, XLSX, TXT - Máximo 10MB
               </p>
               {previewing && (
                 <p className="mt-2 text-sm text-blue-600">

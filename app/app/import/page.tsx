@@ -44,7 +44,15 @@ export default async function ImportPage() {
           <CardContent>
             <div className="space-y-4 text-sm">
               <div>
-                <strong>Obrigatórias:</strong>
+                <strong>Formatos suportados:</strong>
+                <ul className="list-disc list-inside ml-4 mt-1 space-y-1">
+                  <li>CSV (.csv) - Formato padrão</li>
+                  <li>Excel (.xls, .xlsx) - Exporte como CSV primeiro ou use arquivo .csv</li>
+                  <li>Texto (.txt) - Formato delimitado por vírgula ou tab</li>
+                </ul>
+              </div>
+              <div className="mt-4">
+                <strong>Colunas obrigatórias:</strong>
                 <ul className="list-disc list-inside ml-4 mt-1 space-y-1">
                   <li><code>Data</code> ou <code>Date</code> - Data da transação (DD/MM/YYYY ou YYYY-MM-DD)</li>
                   <li><code>Descrição</code>, <code>Histórico</code> ou <code>Description</code> - Descrição da transação</li>

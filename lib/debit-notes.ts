@@ -254,7 +254,7 @@ export async function listDebitNotes(filters?: {
     .in("debit_note_id", notes.map(n => n.id))
   
   if (itemsError) {
-    throw new Error(`Erro ao buscar itens: ${itemsError.message}`)
+    throw new Error('Erro ao buscar itens: ' + itemsError.message)
   }
   
   // Agrupar itens por nota
@@ -297,7 +297,7 @@ export async function getDebitNoteById(debitNoteId: string): Promise<DebitNoteWi
     .eq("debit_note_id", debitNoteId)
   
   if (itemsError) {
-    throw new Error(`Erro ao buscar itens: ${itemsError.message}`)
+    throw new Error('Erro ao buscar itens: ' + itemsError.message)
   }
   
   return {
@@ -453,7 +453,7 @@ export async function findMatchingDebitNotes(
     .in("debit_note_id", notes.map(n => n.id))
   
   if (itemsError) {
-    throw new Error(`Erro ao buscar itens: ${itemsError.message}`)
+    throw new Error('Erro ao buscar itens: ' + itemsError.message)
   }
   
   // Agrupar itens por nota
@@ -470,3 +470,239 @@ export async function findMatchingDebitNotes(
     items: itemsByNoteId[note.id] || [],
   }))
 }
+
+export type UpdateDebitNoteInput = {
+  description?: string | null
+  issuedDate?: string | Date
+  dueDate?: string | Date
+  expenses?: Array<{ description?: string | null; amount: number }>
+  discounts?: Array<{ description?: string | null; amount: number }>
+}
+
+/**
+ * Atualiza uma nota de débito
+ * Permite editar descrição, datas e items adicionais (expenses/discounts)
+ * Não permite editar schedules vinculados (são imutáveis após criação)
+ */
+export async function updateDebitNote(
+  debitNoteId: string,
+  input: UpdateDebitNoteInput
+): Promise<DebitNoteWithItems> {
+  const supabase = await createClient()
+  const workspace = await getActiveWorkspace()
+  
+  // Buscar nota atual
+  const { data: currentNote, error: fetchError } = await supabase
+    .from("debit_notes")
+    .select("*")
+    .eq("id", debitNoteId)
+    .eq("workspace_id", workspace.id)
+    .single()
+  
+  if (fetchError || !currentNote) {
+    throw new Error("Nota de débito não encontrada")
+  }
+  
+  // Só permite editar notas em rascunho
+  if (currentNote.status !== 'draft') {
+    throw new Error("Apenas notas de débito em rascunho podem ser editadas")
+  }
+  
+  // Buscar items atuais (schedules são imutáveis, apenas expenses/discounts podem ser editados)
+  const { data: currentItems, error: itemsError } = await supabase
+    .from("debit_note_items")
+    .select("*")
+    .eq("debit_note_id", debitNoteId)
+    .eq("workspace_id", workspace.id)
+  
+  if (itemsError) {
+    throw new Error(`Erro ao buscar itens: ${itemsError.message}`)
+  }
+  
+  // Separar schedules (imutáveis) de expenses/discounts (editáveis)
+  const scheduleItems = (currentItems || []).filter(item => item.contract_schedule_id !== null)
+  const expenseDiscountItems = (currentItems || []).filter(item => item.contract_schedule_id === null)
+  
+  // Calcular valor total dos schedules (imutável)
+  const schedulesAmount = scheduleItems.reduce((sum, item) => sum + Number(item.amount), 0)
+  
+  // Calcular valor total dos expenses e discounts
+  const expensesAmount = (input.expenses || []).reduce((sum, e) => sum + (e.amount || 0), 0)
+  const discountsAmount = (input.discounts || []).reduce((sum, d) => sum + (d.amount || 0), 0)
+  
+  // Total = schedules + expenses - discounts
+  const totalAmount = schedulesAmount + expensesAmount - discountsAmount
+  validateAmount(totalAmount)
+  
+  // Preparar dados de atualização
+  const updateData: any = {
+    updated_at: new Date().toISOString(),
+  }
+  
+  if (input.description !== undefined) {
+    updateData.description = input.description
+  }
+  
+  if (input.issuedDate) {
+    updateData.issued_date = typeof input.issuedDate === 'string'
+      ? input.issuedDate
+      : formatDateISO(input.issuedDate)
+  }
+  
+  if (input.dueDate) {
+    updateData.due_date = typeof input.dueDate === 'string'
+      ? input.dueDate
+      : formatDateISO(input.dueDate)
+  }
+  
+  if (totalAmount !== currentNote.total_amount) {
+    updateData.total_amount = totalAmount
+  }
+  
+  // Atualizar nota
+  const { data: updatedNote, error: updateError } = await supabase
+    .from("debit_notes")
+    .update(updateData)
+    .eq("id", debitNoteId)
+    .eq("workspace_id", workspace.id)
+    .select()
+    .single()
+  
+  if (updateError) {
+    throw new Error(`Erro ao atualizar nota de débito: ${updateError.message}`)
+  }
+  
+  // Deletar expenses/discounts antigos
+  if (expenseDiscountItems.length > 0) {
+    const { error: deleteError } = await supabase
+      .from("debit_note_items")
+      .delete()
+      .in("id", expenseDiscountItems.map(item => item.id))
+      .eq("workspace_id", workspace.id)
+    
+    if (deleteError) {
+      throw new Error(`Erro ao deletar itens antigos: ${deleteError.message}`)
+    }
+  }
+  
+  // Criar novos expenses/discounts
+  const expenseItems = (input.expenses || []).map((expense, index) => ({
+    workspace_id: workspace.id,
+    debit_note_id: debitNoteId,
+    contract_schedule_id: null,
+    amount: expense.amount,
+    currency: 'BRL',
+    description: expense.description || null,
+    type: 'expense',
+    item_order: scheduleItems.length + index,
+  }))
+  
+  const discountItems = (input.discounts || []).map((discount, index) => ({
+    workspace_id: workspace.id,
+    debit_note_id: debitNoteId,
+    contract_schedule_id: null,
+    amount: discount.amount,
+    currency: 'BRL',
+    description: discount.description || null,
+    type: 'discount',
+    item_order: scheduleItems.length + expenseItems.length + index,
+  }))
+  
+  const newItems = [...expenseItems, ...discountItems]
+  
+  if (newItems.length > 0) {
+    const { data: insertedItems, error: insertError } = await supabase
+      .from("debit_note_items")
+      .insert(newItems)
+      .select()
+    
+    if (insertError) {
+      throw new Error(`Erro ao criar novos itens: ${insertError.message}`)
+    }
+    
+    // Combinar schedules (imutáveis) com novos items
+    const allItems = [...scheduleItems, ...(insertedItems || [])]
+    
+    return {
+      ...updatedNote,
+      items: allItems,
+    }
+  }
+  
+  // Se não há novos items, retornar apenas com schedules
+  return {
+    ...updatedNote,
+    items: scheduleItems,
+  }
+}
+
+/**
+ * Cancela uma nota de débito
+ * Apenas notas em rascunho ou enviadas podem ser canceladas
+ */
+export async function cancelDebitNote(debitNoteId: string): Promise<DebitNoteWithItems> {
+  const supabase = await createClient()
+  const workspace = await getActiveWorkspace()
+  
+  // Buscar nota atual
+  const { data: currentNote, error: fetchError } = await supabase
+    .from("debit_notes")
+    .select("*")
+    .eq("id", debitNoteId)
+    .eq("workspace_id", workspace.id)
+    .single()
+  
+  if (fetchError || !currentNote) {
+    throw new Error("Nota de débito não encontrada")
+  }
+  
+  // Verificar se pode cancelar
+  if (currentNote.status === 'paid') {
+    throw new Error("Não é possível cancelar uma nota de débito já paga")
+  }
+  
+  if (currentNote.status === 'cancelled') {
+    // Já está cancelada, retornar como está
+    const { data: items } = await supabase
+      .from("debit_note_items")
+      .select("*")
+      .eq("debit_note_id", debitNoteId)
+    
+    return {
+      ...currentNote,
+      items: items || [],
+    }
+  }
+  
+  // Atualizar status para cancelled
+  const { data: cancelledNote, error: updateError } = await supabase
+    .from("debit_notes")
+    .update({
+      status: 'cancelled',
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", debitNoteId)
+    .eq("workspace_id", workspace.id)
+    .select()
+    .single()
+  
+  if (updateError) {
+    throw new Error(`Erro ao cancelar nota de débito: ${updateError.message}`)
+  }
+  
+  // Buscar items
+  const { data: items, error: itemsError } = await supabase
+    .from("debit_note_items")
+    .select("*")
+    .eq("debit_note_id", debitNoteId)
+  
+  if (itemsError) {
+    throw new Error(`Erro ao buscar itens: ${itemsError.message}`)
+  }
+  
+  return {
+    ...cancelledNote,
+    items: items || [],
+  }
+}
+

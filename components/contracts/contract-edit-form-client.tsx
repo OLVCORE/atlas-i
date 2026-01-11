@@ -301,6 +301,14 @@ export function ContractEditFormClient({
         </div>
       </div>
 
+      {/* Line Items Editor */}
+      <LineItemsEditor
+        expenses={expenses}
+        discounts={discounts}
+        onExpensesChange={onExpensesChange || (() => {})}
+        onDiscountsChange={onDiscountsChange || (() => {})}
+      />
+
       <div className="flex justify-end gap-2">
         <Button type="submit" disabled={pending}>
           {pending ? "Salvando..." : "Salvar Alterações"}

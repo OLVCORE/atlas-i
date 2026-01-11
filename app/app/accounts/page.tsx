@@ -21,6 +21,8 @@ import {
 } from "@/components/ui/table"
 import { AccountTransferDialog } from "@/components/accounts/AccountTransferDialog"
 import { AccountsEntityFilter } from "@/components/accounts/AccountsEntityFilter"
+import { AccountsTableClient } from "@/components/accounts/AccountsTableClient"
+import { updateAccountBalance } from "@/lib/accounts"
 
 async function createAccountAction(formData: FormData) {
   "use server"
@@ -41,6 +43,39 @@ async function createAccountAction(formData: FormData) {
   // Redirecionar mantendo o filtro de entidade se existir
   const redirectUrl = redirectEntityId ? `/app/accounts?entity_id=${redirectEntityId}` : "/app/accounts"
   redirect(redirectUrl)
+}
+
+async function updateAccountBalanceAction(
+  prevState: any,
+  formData: FormData
+): Promise<{ ok: boolean; error?: string; message?: string }> {
+  "use server"
+  try {
+    const accountId = formData.get("accountId") as string
+    const newBalance = parseFloat(formData.get("newBalance") as string)
+    const balanceDate = formData.get("balanceDate") as string
+    const description = formData.get("description") as string
+
+    if (!accountId || isNaN(newBalance) || !balanceDate) {
+      return {
+        ok: false,
+        error: "Preencha todos os campos obrigatórios para atualizar o saldo.",
+      }
+    }
+
+    await updateAccountBalance(accountId, newBalance, balanceDate, description)
+    revalidatePath("/app/accounts")
+    revalidatePath("/app/cashflow")
+    revalidatePath("/app/dashboard")
+    revalidatePath("/app/ledger")
+
+    return { ok: true }
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Erro desconhecido",
+    }
+  }
 }
 
 async function postAccountTransferAction(formData: FormData) {
@@ -299,61 +334,12 @@ export default async function AccountsPage({
                 Nenhuma conta cadastrada. Crie uma conta acima.
               </p>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Nome</TableHead>
-                    <TableHead>Entidade</TableHead>
-                    <TableHead>Tipo</TableHead>
-                  <TableHead>Saldo Inicial</TableHead>
-                  <TableHead>Data</TableHead>
-                  <TableHead>Saldo Atual</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {accounts.map((account) => {
-                    const entity = entities.find((e) => e.id === account.entity_id)
-                    return (
-                      <TableRow key={account.id}>
-                        <TableCell className="font-medium">{account.name}</TableCell>
-                        <TableCell>{entity?.legal_name || "N/A"}</TableCell>
-                        <TableCell>
-                          {account.type === "checking"
-                            ? "Conta Corrente"
-                            : account.type === "investment"
-                            ? "Investimento"
-                            : "Outro"}
-                        </TableCell>
-                        <TableCell>
-                          {new Intl.NumberFormat("pt-BR", {
-                            style: "currency",
-                            currency: account.currency || "BRL",
-                          }).format(Number(account.opening_balance))}
-                        </TableCell>
-                        <TableCell>
-                          {account.opening_balance_as_of
-                            ? new Date(account.opening_balance_as_of).toLocaleDateString("pt-BR")
-                            : "-"}
-                        </TableCell>
-                        <TableCell className="font-semibold">
-                          {formatCurrency(balanceMap.get(account.id) ?? 0)}
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-                {/* CP2.2: Rodapé com totais */}
-                <tfoot>
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-right font-medium">
-                      Total Saldo Atual:
-                    </TableCell>
-                    <TableCell className="text-right font-bold">
-                      {formatCurrency(totalCurrentBalance)}
-                    </TableCell>
-                  </TableRow>
-                </tfoot>
-              </Table>
+              <AccountsTableClient
+                accounts={accounts}
+                entities={entities}
+                balanceMap={balanceMap}
+                onUpdateBalanceAction={updateAccountBalanceAction}
+              />
             )}
           </CardContent>
         </Card>

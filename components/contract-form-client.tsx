@@ -342,6 +342,14 @@ export function ContractFormClient({
         </div>
       </div>
 
+      {/* Line Items Editor */}
+      <LineItemsEditor
+        expenses={expenses}
+        discounts={discounts}
+        onExpensesChange={onExpensesChange || (() => {})}
+        onDiscountsChange={onDiscountsChange || (() => {})}
+      />
+
       <div className="flex justify-end gap-2">
         <Button type="submit" disabled={pending}>
           {pending ? "Criando..." : "Criar Contrato"}

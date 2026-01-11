@@ -298,7 +298,7 @@ export async function syncPluggyConnection(connectionId: string): Promise<{
         type: accountType,
         currency: pluggyAccount.currencyCode || 'BRL',
         opening_balance: pluggyAccount.balance || 0,
-        opening_balance_date: new Date().toISOString().split('T')[0],
+        opening_balance_as_of: new Date().toISOString().split('T')[0],
         source: 'pluggy',
         external_id: pluggyAccount.id,
       }

@@ -122,7 +122,8 @@ async function transactionExists(
   
   const amountTolerance = 0.01 // 1 centavo de tolerância
   
-  const { data: fuzzyMatches, error: fuzzyError } = await supabase
+  // Construir query para fuzzy matches
+  let fuzzyQuery = supabase
     .from("transactions")
     .select("id, date, amount, description")
     .eq("workspace_id", workspace.id)
@@ -130,8 +131,16 @@ async function transactionExists(
     .eq("source", "csv")
     .gte("date", dateStart.toISOString().split('T')[0])
     .lte("date", dateEnd.toISOString().split('T')[0])
-    .eq("account_id", accountId) // Mesma conta
     .limit(10)
+  
+  // Só adicionar filtro de account_id se não for null
+  if (accountId !== null && accountId !== undefined) {
+    fuzzyQuery = fuzzyQuery.eq("account_id", accountId)
+  } else {
+    fuzzyQuery = fuzzyQuery.is("account_id", null)
+  }
+  
+  const { data: fuzzyMatches, error: fuzzyError } = await fuzzyQuery
   
   if (fuzzyError) {
     console.error('[import] Erro ao verificar matches fuzzy:', fuzzyError)
@@ -230,8 +239,7 @@ async function findOrCreateAccount(
       type: accountType,
       currency: 'BRL',
       opening_balance: 0,
-      opening_balance_date: new Date().toISOString().split('T')[0],
-      source: 'csv', // Marcar como importada
+      opening_balance_as_of: new Date().toISOString().split('T')[0],
     })
     .select("id")
     .single()
@@ -583,6 +591,8 @@ export async function importSpreadsheet(
     result.success = result.imported.transactions > 0
     
   } catch (error) {
+    console.error('[import] Erro não tratado ao importar:', error)
+    console.error('[import] Stack:', error instanceof Error ? error.stack : 'N/A')
     result.errors.push({
       row: 0,
       message: error instanceof Error ? error.message : 'Erro desconhecido ao importar',

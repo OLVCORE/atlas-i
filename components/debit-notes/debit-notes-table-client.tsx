@@ -18,24 +18,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Pencil, X } from "lucide-react"
 import type { DebitNoteWithItems } from "@/lib/debit-notes"
 import type { Contract } from "@/lib/contracts"
 import { ReconcileDebitNoteDialog } from "./reconcile-debit-note-dialog"
 import { DownloadDebitNoteButton } from "./download-debit-note-button"
+import { DebitNoteEditDialog } from "./debit-note-edit-dialog"
 
 type DebitNotesTableClientProps = {
   debitNotes: DebitNoteWithItems[]
   contracts: Contract[]
   entities: Array<{ id: string; legal_name: string }>
+  onUpdateAction?: (prevState: any, formData: FormData) => Promise<{ ok: boolean; error?: string; message?: string }>
+  onCancelAction?: (debitNoteId: string) => Promise<void>
 }
 
 export function DebitNotesTableClient({
   debitNotes,
   contracts,
   entities,
+  onUpdateAction,
+  onCancelAction,
 }: DebitNotesTableClientProps) {
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [contractFilter, setContractFilter] = useState<string>("all")
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [selectedDebitNote, setSelectedDebitNote] = useState<DebitNoteWithItems | null>(null)
 
   const getContractName = (contractId: string) => {
     const contract = contracts.find((c) => c.id === contractId)
@@ -170,6 +178,38 @@ export function DebitNotesTableClient({
                     {note.status === "sent" && (
                       <ReconcileDebitNoteDialog debitNote={note} />
                     )}
+                    {note.status === "draft" && onUpdateAction && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setSelectedDebitNote(note)
+                          setEditDialogOpen(true)
+                        }}
+                        title="Editar nota de débito"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
+                    {(note.status === "draft" || note.status === "sent") && onCancelAction && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={async () => {
+                          if (confirm("Tem certeza que deseja cancelar esta nota de débito?")) {
+                            try {
+                              await onCancelAction(note.id)
+                              window.location.reload()
+                            } catch (error) {
+                              alert(error instanceof Error ? error.message : "Erro ao cancelar nota de débito")
+                            }
+                          }
+                        }}
+                        title="Cancelar nota de débito"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>
@@ -177,6 +217,16 @@ export function DebitNotesTableClient({
           </TableBody>
         </Table>
       </div>
+
+      {/* Edit Dialog */}
+      {selectedDebitNote && onUpdateAction && (
+        <DebitNoteEditDialog
+          open={editDialogOpen}
+          onOpenChange={setEditDialogOpen}
+          debitNote={selectedDebitNote}
+          onUpdateAction={onUpdateAction}
+        />
+      )}
     </div>
   )
 }
