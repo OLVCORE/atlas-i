@@ -101,6 +101,12 @@ export function ContractsTableClient({
     setSelectedContract(null)
   }
 
+  const handleEditClick = (contract: Contract) => {
+    setSelectedContract(contract)
+    setEditDialogOpen(true)
+    setError(null)
+  }
+
   const handleDeleteClick = (contract: Contract) => {
     setSelectedContract(contract)
     setDeleteDialogOpen(true)
