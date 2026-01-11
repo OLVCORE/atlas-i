@@ -37,7 +37,7 @@ async function updateContractAction(contractId: string, prevState: any, formData
         adjustmentPercentage = Number(value.replace(',', '.'))
       }
       // Validar que está entre 0 e 1 (decimal) ou entre 0 e 100 (percentual já convertido)
-      if (isNaN(adjustmentPercentage) || adjustmentPercentage < 0 || adjustmentPercentage > 1) {
+      if (adjustmentPercentage === null || isNaN(adjustmentPercentage) || adjustmentPercentage < 0 || adjustmentPercentage > 1) {
         adjustmentPercentage = null
       }
     }
