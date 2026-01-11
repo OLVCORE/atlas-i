@@ -567,11 +567,13 @@ export async function generateContractSchedule(
     throw new Error("Contrato não encontrado ou não pertence ao workspace")
   }
 
-  // Verificar se já existe schedule para este contrato
+  // Verificar se já existe schedule para esta data (não deletado)
   const { data: existing, error: existingError } = await supabase
     .from("contract_schedules")
     .select("id")
     .eq("contract_id", contractId)
+    .eq("due_date", options.dueDate)
+    .is("deleted_at", null)
     .limit(1)
 
   if (existingError) {
@@ -579,7 +581,7 @@ export async function generateContractSchedule(
   }
 
   if (existing && existing.length > 0) {
-    throw new Error("Schedule já existe para este contrato")
+    throw new Error(`Já existe um schedule para esta data (${options.dueDate}) neste contrato`)
   }
 
   // Criar schedule
