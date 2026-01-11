@@ -36,15 +36,6 @@ export function ContractEditDialog({
   const [discounts, setDiscounts] = useState<LineItem[]>([])
   const [loadingItems, setLoadingItems] = useState(false)
 
-  // Load line items when dialog opens
-  useEffect(() => {
-    if (open && contract) {
-      setIsSuccess(false)
-      setLoadingItems(true)
-      loadLineItems()
-    }
-  }, [open, contract])
-
   const loadLineItems = async () => {
     if (!contract) return
     
@@ -72,6 +63,15 @@ export function ContractEditDialog({
       setLoadingItems(false)
     }
   }
+
+  // Load line items when dialog opens
+  useEffect(() => {
+    if (open && contract) {
+      setIsSuccess(false)
+      setLoadingItems(true)
+      loadLineItems()
+    }
+  }, [open, contract, loadLineItems])
 
   // Close dialog and refresh when update succeeds
   const handleSuccess = () => {
