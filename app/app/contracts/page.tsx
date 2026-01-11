@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ContractsTableClient } from "@/components/contracts-table-client"
 import { ContractCreateDialog } from "@/components/contracts/contract-create-dialog"
+import { ContractCreateButton } from "./create-button"
 
 async function cancelContractAction(contractId: string) {
   "use server"
