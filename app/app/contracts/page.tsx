@@ -6,8 +6,9 @@ import { listContracts, createContract, cancelContract, updateContract, deleteCo
 import { listSchedulesByContract } from "@/lib/schedules"
 import { listEntities } from "@/lib/entities"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { ContractFormClient } from "@/components/contract-form-client"
+import { Button } from "@/components/ui/button"
 import { ContractsTableClient } from "@/components/contracts-table-client"
+import { ContractCreateDialog } from "@/components/contracts/contract-create-dialog"
 
 async function cancelContractAction(contractId: string) {
   "use server"
@@ -299,11 +300,19 @@ export default async function ContractsPage() {
         </div>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Novo Contrato</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+            <CardTitle>Contratos Cadastrados</CardTitle>
+            <ContractCreateButton entities={entities} onCreateAction={createContractAction} />
           </CardHeader>
           <CardContent>
-            <ContractFormClient entities={entities} action={createContractAction} />
+            <ContractsTableClient
+              contracts={contracts}
+              entities={entities}
+              schedulesByContract={schedulesByContract}
+              onCancel={cancelContractAction}
+              onDelete={deleteContractAction}
+              onUpdateAction={updateContractAction}
+            />
           </CardContent>
         </Card>
 

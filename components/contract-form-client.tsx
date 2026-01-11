@@ -19,14 +19,13 @@ export function ContractFormClient({ entities, action }: ContractFormClientProps
   const router = useRouter()
   const pending = state?.ok === undefined
 
-  // Limpar formulário após sucesso e refresh da página
+  // Limpar formulário após sucesso (quando usado em modal, não redireciona)
   useEffect(() => {
     if (state?.ok === true && state.message) {
       formRef.current?.reset()
-      // Refresh para atualizar a lista
-      router.refresh()
+      // Não redireciona quando usado em modal - o modal controla o fechamento
     }
-  }, [state?.ok, state?.message, router])
+  }, [state?.ok, state?.message])
 
   // Atualizar label do valor mensal baseado no tipo de valor
   useEffect(() => {
