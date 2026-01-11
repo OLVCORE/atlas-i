@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     const workspace = await getActiveWorkspace()
     const body = await request.json()
 
-    const { contractId, scheduleIds, description } = body
+    const { contractId, scheduleIds, description, expenses, discounts } = body
 
     if (!contractId || !scheduleIds || !Array.isArray(scheduleIds) || scheduleIds.length === 0) {
       return NextResponse.json(
@@ -30,6 +30,8 @@ export async function POST(request: NextRequest) {
       contractId,
       scheduleIds,
       description: description || null,
+      expenses: expenses || [],
+      discounts: discounts || [],
     })
 
     return NextResponse.json(debitNote, { status: 201 })

@@ -49,6 +49,8 @@ export type CreateDebitNoteInput = {
   issuedDate?: string | Date
   dueDate?: string | Date
   description?: string
+  expenses?: Array<{ description?: string | null; amount: number }>
+  discounts?: Array<{ description?: string | null; amount: number }>
 }
 
 /**

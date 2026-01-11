@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { LineItemsEditor, type LineItem } from "@/components/contracts/line-items-editor"
 import type { Contract } from "@/lib/contracts"
 import type { ContractSchedule } from "@/lib/schedules"
 
@@ -35,6 +36,8 @@ export function GenerateDebitNoteDialog({ contracts }: GenerateDebitNoteDialogPr
   const [schedules, setSchedules] = useState<ContractSchedule[]>([])
   const [selectedScheduleIds, setSelectedScheduleIds] = useState<Set<string>>(new Set())
   const [description, setDescription] = useState("")
+  const [expenses, setExpenses] = useState<LineItem[]>([])
+  const [discounts, setDiscounts] = useState<LineItem[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingSchedules, setIsLoadingSchedules] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -78,9 +81,14 @@ export function GenerateDebitNoteDialog({ contracts }: GenerateDebitNoteDialogPr
     setSelectedScheduleIds(newSet)
   }
 
-  const totalAmount = schedules
+  const schedulesAmount = schedules
     .filter((s) => selectedScheduleIds.has(s.id))
     .reduce((sum, s) => sum + Number(s.amount), 0)
+  
+  const expensesAmount = expenses.reduce((sum, e) => sum + (e.amount || 0), 0)
+  const discountsAmount = discounts.reduce((sum, d) => sum + (d.amount || 0), 0)
+  
+  const totalAmount = schedulesAmount + expensesAmount - discountsAmount
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("pt-BR", {
@@ -117,6 +125,8 @@ export function GenerateDebitNoteDialog({ contracts }: GenerateDebitNoteDialogPr
           contractId: selectedContractId,
           scheduleIds: Array.from(selectedScheduleIds),
           description: description || null,
+          expenses: expenses.map(e => ({ description: e.description || null, amount: e.amount })),
+          discounts: discounts.map(d => ({ description: d.description || null, amount: d.amount })),
         }),
       })
 
@@ -134,6 +144,8 @@ export function GenerateDebitNoteDialog({ contracts }: GenerateDebitNoteDialogPr
       setSchedules([])
       setSelectedScheduleIds(new Set())
       setDescription("")
+      setExpenses([])
+      setDiscounts([])
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao criar nota de débito")
     } finally {
@@ -256,6 +268,17 @@ export function GenerateDebitNoteDialog({ contracts }: GenerateDebitNoteDialogPr
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Ex: Fatura mensal - jan/2025"
+            />
+          </div>
+
+          {/* Line Items Editor */}
+          <div className="border-t pt-4">
+            <h3 className="text-lg font-semibold mb-4">Despesas e Descontos Adicionais</h3>
+            <LineItemsEditor
+              expenses={expenses}
+              discounts={discounts}
+              onExpensesChange={setExpenses}
+              onDiscountsChange={setDiscounts}
             />
           </div>
 
