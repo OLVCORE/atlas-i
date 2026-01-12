@@ -18,11 +18,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Pencil, X, Trash2 } from "lucide-react"
+import { Pencil, X, Trash2, Eye } from "lucide-react"
 import type { DebitNoteWithItems } from "@/lib/debit-notes"
 import type { Contract } from "@/lib/contracts"
 import { ReconcileDebitNoteDialog } from "./reconcile-debit-note-dialog"
-import { DownloadDebitNoteButton } from "./download-debit-note-button"
 import { DebitNoteEditDialog } from "./debit-note-edit-dialog"
 
 type DebitNotesTableClientProps = {
@@ -176,7 +175,12 @@ export function DebitNotesTableClient({
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
-                    <DownloadDebitNoteButton debitNoteId={note.id} />
+                    <Link href={`/app/debit-notes/${note.id}/preview`}>
+                      <Button variant="outline" size="sm" className="flex items-center gap-2">
+                        <Eye className="h-4 w-4" />
+                        Visualizar
+                      </Button>
+                    </Link>
                     {note.status === "sent" && (
                       <ReconcileDebitNoteDialog debitNote={note} />
                     )}
