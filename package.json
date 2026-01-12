@@ -30,6 +30,8 @@
     "next-themes": "^0.2.1",
     "papaparse": "^5.4.1",
     "puppeteer": "^24.34.0",
+    "puppeteer-core": "^24.34.0",
+    "@sparticuz/chromium": "^131.0.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "tailwind-merge": "^2.2.0",

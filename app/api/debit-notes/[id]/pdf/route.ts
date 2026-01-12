@@ -4,7 +4,20 @@ import { getActiveWorkspace } from "@/lib/workspace"
 import { getDebitNoteById } from "@/lib/debit-notes"
 import { listContracts } from "@/lib/contracts"
 import { listEntities } from "@/lib/entities"
-import puppeteer from "puppeteer"
+
+// Usar puppeteer-core com chromium para Vercel
+let puppeteer: any
+let chromium: any
+
+try {
+  // Tentar usar @sparticuz/chromium (para Vercel)
+  chromium = require("@sparticuz/chromium")
+  puppeteer = require("puppeteer-core")
+} catch {
+  // Fallback para puppeteer normal (desenvolvimento local)
+  puppeteer = require("puppeteer")
+  chromium = null
+}
 
 export async function GET(
   request: NextRequest,
@@ -44,10 +57,17 @@ export async function GET(
     const html = generateDebitNoteHTML(debitNote, contract, entity)
 
     // Gerar PDF com Puppeteer
-    const browser = await puppeteer.launch({
+    const launchOptions: any = {
       headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    })
+      args: chromium ? chromium.args : ["--no-sandbox", "--disable-setuid-sandbox"],
+    }
+
+    // Se estiver no Vercel, usar chromium executável
+    if (chromium) {
+      launchOptions.executablePath = await chromium.executablePath()
+    }
+
+    const browser = await puppeteer.launch(launchOptions)
 
     const page = await browser.newPage()
     await page.setContent(html, { waitUntil: "networkidle0" })
