@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button"
 import { CommitmentFormClient } from "@/components/commitment-form-client"
 import { CommitmentsTableClient } from "@/components/commitments-table-client"
 import { CommitmentsFilterClient } from "@/components/commitments-filter-client"
+import { BulkCommitmentsDialogClient } from "@/components/commitments/BulkCommitmentsDialogClient"
 
 async function createCommitmentAction(prevState: any, formData: FormData) {
   "use server"
@@ -118,6 +119,46 @@ async function cancelCommitmentAction(commitmentId: string) {
   revalidatePath("/app/dashboard")
   
   redirect("/app/commitments")
+}
+
+async function updateCommitmentAction(prevState: any, formData: FormData) {
+  "use server"
+
+  try {
+    const { updateCommitment } = await import("@/lib/commitments")
+    
+    const commitmentId = formData.get("commitmentId") as string
+    const description = formData.get("description") as string
+    const category = formData.get("category") as string || null
+    const endDate = formData.get("endDate") as string || null
+    const recurrence = formData.get("recurrence") as 'none' | 'monthly' | 'quarterly' | 'yearly' | 'custom'
+
+    if (!commitmentId || !description) {
+      return {
+        ok: false,
+        error: "Preencha todos os campos obrigatórios.",
+      }
+    }
+
+    await updateCommitment(commitmentId, {
+      description,
+      category: category || null,
+      endDate: endDate || null,
+      recurrence,
+    })
+
+    revalidatePath("/app/commitments")
+    revalidatePath("/app/schedules")
+    revalidatePath("/app/cashflow")
+    revalidatePath("/app/dashboard")
+
+    return { ok: true, message: "Compromisso atualizado com sucesso." }
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Erro desconhecido",
+    }
+  }
 }
 
 async function postTransactionFromCommitmentAction(formData: FormData) {
@@ -223,7 +264,10 @@ export default async function CommitmentsPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>Novo Compromisso</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>Novo Compromisso</CardTitle>
+            <BulkCommitmentsDialogClient entities={entities} onCreateAction={createCommitmentAction} />
+          </div>
         </CardHeader>
         <CardContent>
           <CommitmentFormClient entities={entities} action={createCommitmentAction} />
@@ -245,6 +289,7 @@ export default async function CommitmentsPage({
             accounts={accounts.map((a: any) => ({ id: a.id, name: a.name, type: a.type }))}
             onActivate={activateCommitmentAction}
             onCancel={cancelCommitmentAction}
+            onUpdateAction={updateCommitmentAction}
             postTransactionFromCommitmentAction={postTransactionFromCommitmentAction}
           />
         </CardContent>

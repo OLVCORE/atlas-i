@@ -47,11 +47,12 @@ export async function getAccountCurrentBalance(
   const asOfDate = asOf || new Date()
   const asOfISO = asOfDate.toISOString().split('T')[0]
 
-  // Buscar saldo inicial da conta
+  // Buscar saldo inicial da conta (apenas se não estiver deletada)
   const { data: account, error: accountError } = await supabase
     .from("accounts")
     .select("opening_balance, opening_balance_as_of")
     .eq("id", accountId)
+    .is("deleted_at", null) // Filtrar contas deletadas
     .single()
 
   if (accountError) {
@@ -107,12 +108,13 @@ export async function getCashPositionSummary(
   const asOfDate = asOf || new Date()
   const asOfISO = asOfDate.toISOString().split('T')[0]
 
-  // Buscar contas do workspace (filtrar por entity se informado)
+  // Buscar contas do workspace (filtrar por entity se informado, excluir deletadas)
   let accountsQuery = supabase
     .from("accounts")
     .select("id, name, type, entity_id, opening_balance, opening_balance_as_of")
     .eq("workspace_id", workspace.id)
     .in("type", ["checking", "investment"])
+    .is("deleted_at", null) // Filtrar contas deletadas
 
   if (entityId) {
     accountsQuery = accountsQuery.eq("entity_id", entityId)

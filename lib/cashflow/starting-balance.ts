@@ -29,6 +29,7 @@ export async function getStartingBalance(filters?: {
     .select("opening_balance, opening_balance_as_of")
     .eq("workspace_id", workspace.id)
     .in("type", ["checking", "investment"]) // Apenas contas correntes e investimentos
+    .is("deleted_at", null) // Filtrar contas deletadas
 
   if (filters?.entityId) {
     query = query.eq("entity_id", filters.entityId)

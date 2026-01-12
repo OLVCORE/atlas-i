@@ -1,11 +1,12 @@
 import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
-import { listAllAccounts, createAccount } from "@/lib/accounts"
+import { listAllAccounts, createAccount, deleteAccount, updateAccount, updateAccountBalance } from "@/lib/accounts"
 import { listAccounts } from "@/lib/accounts/list"
 import { getCashPositionSummary } from "@/lib/accounts/balances"
 import { listEntities } from "@/lib/entities"
 import { getActiveWorkspace } from "@/lib/workspace"
+import { formatAccountName, getBankByCode } from "@/lib/utils/banks"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -22,13 +23,14 @@ import {
 import { AccountTransferDialog } from "@/components/accounts/AccountTransferDialog"
 import { AccountsEntityFilter } from "@/components/accounts/AccountsEntityFilter"
 import { AccountsTableClient } from "@/components/accounts/AccountsTableClient"
-import { updateAccountBalance } from "@/lib/accounts"
+import { BankSelect } from "@/components/accounts/BankSelect"
 
 async function createAccountAction(formData: FormData) {
   "use server"
 
   const entityId = formData.get("entityId") as string
-  const name = formData.get("name") as string
+  let name = formData.get("name") as string
+  const bankCode = formData.get("bankCode") as string | null
   const type = formData.get("type") as "checking" | "investment" | "other"
   const openingBalance = parseFloat(formData.get("openingBalance") as string) || 0
   const openingBalanceDate = formData.get("openingBalanceDate") as string || new Date().toISOString().split("T")[0]
@@ -38,11 +40,74 @@ async function createAccountAction(formData: FormData) {
     throw new Error("Preencha todos os campos obrigatórios")
   }
 
+  // Formatar nome da conta com código do banco se selecionado
+  if (bankCode) {
+    const bank = getBankByCode(bankCode)
+    if (bank) {
+      name = formatAccountName(bank.code, bank.name, name)
+    }
+  }
+
   await createAccount(entityId, name, type, openingBalance, openingBalanceDate)
   
   // Redirecionar mantendo o filtro de entidade se existir
   const redirectUrl = redirectEntityId ? `/app/accounts?entity_id=${redirectEntityId}` : "/app/accounts"
   redirect(redirectUrl)
+}
+
+async function updateAccountAction(
+  prevState: any,
+  formData: FormData
+): Promise<{ ok: boolean; error?: string; message?: string }> {
+  "use server"
+  try {
+    const accountId = formData.get("accountId") as string
+    const name = formData.get("name") as string
+    const entityId = formData.get("entityId") as string
+    const type = formData.get("type") as "checking" | "investment" | "other"
+    const openingBalance = parseFloat(formData.get("openingBalance") as string) || 0
+    const openingBalanceDate = formData.get("openingBalanceDate") as string || new Date().toISOString().split("T")[0]
+
+    if (!accountId || !name || !entityId || !type) {
+      return {
+        ok: false,
+        error: "Preencha todos os campos obrigatórios.",
+      }
+    }
+
+    await updateAccount(accountId, {
+      name,
+      entity_id: entityId,
+      type,
+      opening_balance: openingBalance,
+      opening_balance_as_of: openingBalanceDate,
+    })
+
+    revalidatePath("/app/accounts")
+    revalidatePath("/app/cashflow")
+    revalidatePath("/app/dashboard")
+    revalidatePath("/app/ledger")
+
+    return { ok: true }
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Erro desconhecido",
+    }
+  }
+}
+
+async function deleteAccountAction(accountId: string) {
+  "use server"
+  
+  try {
+    await deleteAccount(accountId)
+    revalidatePath("/app/accounts")
+    revalidatePath("/app/cashflow")
+    revalidatePath("/app/dashboard")
+  } catch (error) {
+    throw new Error(error instanceof Error ? error.message : "Erro ao deletar conta")
+  }
 }
 
 async function updateAccountBalanceAction(
@@ -258,6 +323,10 @@ export default async function AccountsPage({
                   </select>
                 </div>
                 <div className="space-y-2">
+                  <Label htmlFor="bankCode">Banco (opcional)</Label>
+                  <BankSelect name="bankCode" />
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="name">Nome da Conta</Label>
                   <Input
                     id="name"
@@ -338,7 +407,9 @@ export default async function AccountsPage({
                 accounts={accounts}
                 entities={entities}
                 balanceMap={balanceMap}
+                onUpdateAction={updateAccountAction}
                 onUpdateBalanceAction={updateAccountBalanceAction}
+                onDeleteAction={deleteAccountAction}
               />
             )}
           </CardContent>

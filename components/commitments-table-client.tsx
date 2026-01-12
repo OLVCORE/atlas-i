@@ -16,7 +16,9 @@ import type { Commitment } from "@/lib/commitments"
 import type { FinancialSchedule } from "@/lib/schedules"
 import { CancelCommitmentDialog } from "@/components/governance/CancelCommitmentDialog"
 import { SettleCommitmentDialog } from "@/components/commitments/SettleCommitmentDialog"
-import { canCancelCommitment } from "@/lib/governance/state-transitions"
+import { EditCommitmentDialog } from "@/components/commitments/EditCommitmentDialog"
+import { canCancelCommitment, canEditCommitment } from "@/lib/governance/state-transitions"
+import { Pencil } from "lucide-react"
 
 type CommitmentsTableClientProps = {
   commitments: Commitment[]
@@ -25,6 +27,7 @@ type CommitmentsTableClientProps = {
   accounts?: Array<{ id: string; name: string; type: string }>
   onActivate: (id: string) => Promise<void>
   onCancel: (id: string) => Promise<void>
+  onUpdateAction: (prevState: any, formData: FormData) => Promise<{ ok: boolean; error?: string; message?: string }>
   postTransactionFromCommitmentAction: (formData: FormData) => Promise<void>
 }
 
@@ -35,12 +38,14 @@ export function CommitmentsTableClient({
   accounts = [],
   onActivate,
   onCancel,
+  onUpdateAction,
   postTransactionFromCommitmentAction,
 }: CommitmentsTableClientProps) {
   const router = useRouter()
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
   const [settleDialogOpen, setSettleDialogOpen] = useState(false)
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [selectedCommitment, setSelectedCommitment] = useState<Commitment | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -113,6 +118,14 @@ export function CommitmentsTableClient({
     setSelectedCommitment(commitment)
     setSettleDialogOpen(true)
     setError(null)
+  }
+
+  const handleEditClick = (commitment: Commitment) => {
+    if (canEditCommitment(commitment.status)) {
+      setSelectedCommitment(commitment)
+      setEditDialogOpen(true)
+      setError(null)
+    }
   }
 
   const getCancelInfo = (commitment: Commitment) => {
@@ -193,6 +206,17 @@ export function CommitmentsTableClient({
                       Ver Cronograma
                     </Link>
                   </Button>
+                  {canEditCommitment(commitment.status) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleEditClick(commitment)}
+                      disabled={loadingId === commitment.id}
+                      title="Editar compromisso"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  )}
                   {commitment.status === "planned" && (
                     <Button
                       variant="outline"
@@ -229,6 +253,19 @@ export function CommitmentsTableClient({
       
       {selectedCommitment && (
         <>
+          <EditCommitmentDialog
+            open={editDialogOpen}
+            onOpenChange={(open) => {
+              setEditDialogOpen(open)
+              if (!open) {
+                setSelectedCommitment(null)
+                setError(null)
+              }
+            }}
+            commitment={selectedCommitment}
+            entities={entities}
+            onUpdateAction={onUpdateAction}
+          />
           <CancelCommitmentDialog
             open={cancelDialogOpen}
             onOpenChange={(open) => {

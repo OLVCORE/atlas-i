@@ -10,6 +10,7 @@ export async function listAccountsByEntity(entityId: string) {
     .select("*")
     .eq("workspace_id", workspace.id)
     .eq("entity_id", entityId)
+    .is("deleted_at", null) // Filtrar contas deletadas
     .order("created_at", { ascending: false })
 
   if (error) {
@@ -27,6 +28,7 @@ export async function listAllAccounts() {
     .from("accounts")
     .select("*")
     .eq("workspace_id", workspace.id)
+    .is("deleted_at", null) // Filtrar contas deletadas
     .order("created_at", { ascending: false })
 
   if (error) {
@@ -87,24 +89,27 @@ export async function updateAccountBalance(
   const supabase = await createClient()
   const workspace = await getActiveWorkspace()
 
-  // Buscar conta atual
+  // Buscar conta atual (apenas se não estiver deletada)
   const { data: account, error: accountError } = await supabase
     .from("accounts")
     .select("*")
     .eq("id", accountId)
     .eq("workspace_id", workspace.id)
+    .is("deleted_at", null) // Filtrar contas deletadas
     .single()
 
   if (accountError || !account) {
     throw new Error("Conta não encontrada")
   }
 
-  // Buscar saldo atual calculado até a data de referência
+  // IMPORTANTE: O saldo atual deve ser calculado até HOJE (data atual)
+  // para que a transação de ajuste seja incluída no cálculo do saldo atual na tabela
+  const today = new Date()
   const { getAccountCurrentBalance } = await import("./accounts/balances")
-  const currentBalanceData = await getAccountCurrentBalance(accountId, new Date(balanceDate))
+  const currentBalanceData = await getAccountCurrentBalance(accountId, today)
   const currentCalculatedBalance = currentBalanceData.current_balance
 
-  // Calcular diferença entre o saldo desejado e o saldo calculado
+  // Calcular diferença entre o saldo desejado e o saldo calculado até hoje
   const difference = newBalance - currentCalculatedBalance
 
   // IMPORTANTE: Não alteramos opening_balance! 
@@ -114,13 +119,16 @@ export async function updateAccountBalance(
   if (Math.abs(difference) > 0.01) {
     const { createTransaction } = await import("./transactions")
     try {
-      // Criar transação de ajuste para corrigir o saldo atual
+      // Criar transação de ajuste com data de HOJE para que seja incluída no cálculo do saldo atual
+      const todayISO = today.toISOString().split("T")[0]
+      const transactionDescription = description || `Ajuste manual de saldo${balanceDate && balanceDate !== todayISO ? ` (referência: ${balanceDate})` : ""}`
+      
       await createTransaction(
         account.entity_id,
         difference > 0 ? "income" : "expense",
         Math.abs(difference),
-        balanceDate,
-        description || `Ajuste manual de saldo - ${balanceDate}`,
+        todayISO, // Sempre usar data de hoje para que seja incluída no cálculo do saldo atual
+        transactionDescription,
         accountId,
         account.currency
       )
@@ -131,4 +139,66 @@ export async function updateAccountBalance(
 
   // Retornar a conta (sem alterações no opening_balance)
   return account
+}
+
+/**
+ * Atualiza uma conta
+ * @param accountId ID da conta a ser atualizada
+ * @param data Dados a serem atualizados
+ */
+export async function updateAccount(
+  accountId: string,
+  data: {
+    name?: string
+    entity_id?: string
+    type?: "checking" | "investment" | "other"
+    opening_balance?: number
+    opening_balance_as_of?: string
+  }
+) {
+  const supabase = await createClient()
+  const workspace = await getActiveWorkspace()
+
+  const updateData: Record<string, any> = {}
+  
+  if (data.name !== undefined) updateData.name = data.name
+  if (data.entity_id !== undefined) updateData.entity_id = data.entity_id
+  if (data.type !== undefined) updateData.type = data.type
+  if (data.opening_balance !== undefined) updateData.opening_balance = data.opening_balance
+  if (data.opening_balance_as_of !== undefined) updateData.opening_balance_as_of = data.opening_balance_as_of
+
+  const { data: updatedAccount, error } = await supabase
+    .from("accounts")
+    .update(updateData)
+    .eq("id", accountId)
+    .eq("workspace_id", workspace.id)
+    .is("deleted_at", null) // Não permitir atualizar contas deletadas
+    .select()
+    .single()
+
+  if (error) {
+    throw new Error(`Erro ao atualizar account: ${error.message}`)
+  }
+
+  return updatedAccount
+}
+
+/**
+ * Deleta uma conta (soft delete)
+ * @param accountId ID da conta a ser deletada
+ */
+export async function deleteAccount(accountId: string) {
+  const supabase = await createClient()
+  const workspace = await getActiveWorkspace()
+
+  // Atualizar deleted_at (soft delete)
+  const { error } = await supabase
+    .from("accounts")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", accountId)
+    .eq("workspace_id", workspace.id)
+
+  if (error) {
+    throw new Error(`Erro ao deletar account: ${error.message}`)
+  }
 }

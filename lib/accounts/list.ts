@@ -32,6 +32,7 @@ export async function listAccounts({
     .from("accounts")
     .select("*")
     .eq("workspace_id", workspaceId)
+    .is("deleted_at", null) // Filtrar contas deletadas
     .order("name", { ascending: true })
 
   // Filtrar por entity_id se fornecido
@@ -39,17 +40,13 @@ export async function listAccounts({
     query = query.eq("entity_id", entityId)
   }
 
-  // Filtrar deleted_at se existir na tabela
-  // Nota: Se a coluna não existir, o RLS já deve tratar isso
-  // Mas vamos garantir que não mostramos deletados
   const { data, error } = await query
 
   if (error) {
     throw new Error(`Erro ao listar accounts: ${error.message}`)
   }
 
-  // Filtrar deleted_at manualmente se necessário (caso RLS não cubra)
-  const accounts = (data || []).filter((acc: any) => !acc.deleted_at)
+  const accounts = data || []
 
   return accounts as AccountListItem[]
 }

@@ -1,12 +1,13 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useFormState } from "react-dom"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { HelpTooltip } from "@/components/help/HelpTooltip"
+import { getCategoriesByType } from "@/lib/utils/categories"
 
 type CommitmentFormClientProps = {
   entities: Array<{ id: string; legal_name: string; type: string }>
@@ -18,15 +19,19 @@ export function CommitmentFormClient({ entities, action }: CommitmentFormClientP
   const formRef = useRef<HTMLFormElement>(null)
   const router = useRouter()
   const pending = state?.ok === undefined
+  const [type, setType] = useState<"expense" | "revenue">("expense")
 
   // Limpar formulário após sucesso e refresh da página
   useEffect(() => {
     if (state?.ok === true && state.message) {
       formRef.current?.reset()
+      setType("expense") // Reset type
       // Refresh para atualizar a lista
       router.refresh()
     }
   }, [state?.ok, state?.message, router])
+
+  const categories = getCategoriesByType(type)
 
   return (
     <form ref={formRef} action={formAction} className="space-y-4">
@@ -71,6 +76,8 @@ export function CommitmentFormClient({ entities, action }: CommitmentFormClientP
             id="type"
             name="type"
             required
+            value={type}
+            onChange={(e) => setType(e.target.value as "expense" | "revenue")}
             className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <option value="expense">Despesa</option>
@@ -83,11 +90,18 @@ export function CommitmentFormClient({ entities, action }: CommitmentFormClientP
             <Label htmlFor="category">Categoria</Label>
             <HelpTooltip contentKey="commitments.category" />
           </div>
-          <Input
+          <select
             id="category"
             name="category"
-            placeholder="Ex: Marketing, Manutenção, Viagens"
-          />
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            <option value="">Selecione uma categoria</option>
+            {categories.map((cat) => (
+              <option key={cat} value={cat}>
+                {cat}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="space-y-2">

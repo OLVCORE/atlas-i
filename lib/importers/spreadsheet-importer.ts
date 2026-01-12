@@ -215,13 +215,14 @@ async function findOrCreateAccount(
   const supabase = await createClient()
   const workspace = await getActiveWorkspace()
   
-  // Tentar encontrar conta existente
+  // Tentar encontrar conta existente (apenas não deletadas)
   const { data: existing } = await supabase
     .from("accounts")
     .select("id")
     .eq("workspace_id", workspace.id)
     .eq("entity_id", entityId)
     .ilike("name", accountName)
+    .is("deleted_at", null) // Filtrar contas deletadas
     .limit(1)
     .maybeSingle()
   
