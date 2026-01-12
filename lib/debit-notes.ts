@@ -766,6 +766,8 @@ export async function deleteDebitNote(debitNoteId: string): Promise<void> {
   const supabase = await createClient()
   const workspace = await getActiveWorkspace()
   
+  console.log("[deleteDebitNote] Iniciando deleção:", { debitNoteId, workspaceId: workspace.id })
+  
   // Buscar nota atual
   const { data: currentNote, error: fetchError } = await supabase
     .from("debit_notes")
@@ -776,59 +778,29 @@ export async function deleteDebitNote(debitNoteId: string): Promise<void> {
     .single()
   
   if (fetchError || !currentNote) {
+    console.error("[deleteDebitNote] Erro ao buscar nota:", fetchError)
     throw new Error("Nota de débito não encontrada")
   }
+  
+  console.log("[deleteDebitNote] Nota encontrada:", { id: currentNote.id, status: currentNote.status })
   
   // Verificar se pode deletar (apenas canceladas podem ser deletadas)
   if (currentNote.status !== 'cancelled') {
     throw new Error("Apenas notas de débito canceladas podem ser deletadas permanentemente")
   }
   
-  // Tentar soft delete primeiro (se a coluna deleted_at existir)
-  // Se falhar, fazer hard delete (deletar permanentemente)
-  try {
-    const { error: updateError } = await supabase
-      .from("debit_notes")
-      .update({
-        deleted_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", debitNoteId)
-      .eq("workspace_id", workspace.id)
-    
-    // Se deu erro porque a coluna não existe, fazer hard delete
-    if (updateError) {
-      const errorMsg = updateError.message || ''
-      if (errorMsg.includes('deleted_at') || errorMsg.includes('column') || errorMsg.includes('does not exist')) {
-        // Hard delete: deletar permanentemente (coluna deleted_at não existe ainda)
-        const { error: deleteError } = await supabase
-          .from("debit_notes")
-          .delete()
-          .eq("id", debitNoteId)
-          .eq("workspace_id", workspace.id)
-        
-        if (deleteError) {
-          throw new Error(`Erro ao deletar nota de débito: ${deleteError.message}`)
-        }
-      } else {
-        throw new Error(`Erro ao deletar nota de débito: ${updateError.message}`)
-      }
-    }
-  } catch (error: any) {
-    // Se falhou com erro de coluna, tentar hard delete como fallback
-    const errorMsg = error.message || ''
-    if (errorMsg.includes('deleted_at') || errorMsg.includes('column') || errorMsg.includes('does not exist')) {
-      const { error: deleteError } = await supabase
-        .from("debit_notes")
-        .delete()
-        .eq("id", debitNoteId)
-        .eq("workspace_id", workspace.id)
-      
-      if (deleteError) {
-        throw new Error(`Erro ao deletar nota de débito: ${deleteError.message}`)
-      }
-    } else {
-      throw error
-    }
+  // Como a coluna deleted_at provavelmente não existe ainda, fazer hard delete diretamente
+  console.log("[deleteDebitNote] Fazendo hard delete (deleção física)...")
+  const { error: deleteError } = await supabase
+    .from("debit_notes")
+    .delete()
+    .eq("id", debitNoteId)
+    .eq("workspace_id", workspace.id)
+  
+  if (deleteError) {
+    console.error("[deleteDebitNote] Erro ao deletar:", deleteError)
+    throw new Error(`Erro ao deletar nota de débito: ${deleteError.message}`)
   }
+  
+  console.log("[deleteDebitNote] Nota deletada com sucesso")
 }

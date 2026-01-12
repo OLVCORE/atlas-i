@@ -78,8 +78,11 @@ async function deleteDebitNoteAction(debitNoteId: string) {
   "use server"
   
   try {
+    console.log("[deleteDebitNoteAction] Iniciando deleção da nota:", debitNoteId)
     await deleteDebitNote(debitNoteId)
+    console.log("[deleteDebitNoteAction] Nota deletada com sucesso")
     revalidatePath("/app/debit-notes")
+    return { success: true }
   } catch (error: any) {
     console.error("[deleteDebitNoteAction] Erro:", error)
     throw error

@@ -219,7 +219,9 @@ export function DebitNotesTableClient({
                         onClick={async () => {
                           if (confirm("Tem certeza que deseja deletar permanentemente esta nota de débito cancelada? Esta ação não pode ser desfeita.")) {
                             try {
+                              console.log("Deletando nota de débito:", note.id)
                               await onDeleteAction(note.id)
+                              console.log("Nota deletada com sucesso, recarregando página...")
                               // Usar router.refresh() em vez de window.location.reload() para melhor UX
                               window.location.reload()
                             } catch (error) {
