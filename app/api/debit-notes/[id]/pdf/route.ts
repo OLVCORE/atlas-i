@@ -12,28 +12,31 @@ let chromium: any
 // Detectar ambiente
 const isVercel = process.env.VERCEL === "1" || process.env.VERCEL_ENV
 
-try {
+// Carregar módulos dinamicamente
+async function loadPuppeteer() {
   if (isVercel) {
     // Vercel: usar puppeteer-core com @sparticuz/chromium
     console.log("[PDF] Ambiente Vercel detectado, usando puppeteer-core + chromium")
-    chromium = require("@sparticuz/chromium")
-    puppeteer = require("puppeteer-core")
+    try {
+      chromium = await import("@sparticuz/chromium")
+      puppeteer = await import("puppeteer-core")
+      // Configurar chromium para Vercel
+      chromium.setGraphicsMode(false)
+      console.log("[PDF] Módulos carregados com sucesso")
+    } catch (error: any) {
+      console.error("[PDF] Erro ao carregar módulos Vercel:", error.message)
+      throw error
+    }
   } else {
     // Local: usar puppeteer normal
     console.log("[PDF] Ambiente local detectado, usando puppeteer")
-    puppeteer = require("puppeteer")
-    chromium = null
-  }
-} catch (error: any) {
-  console.error("[PDF] Erro ao carregar puppeteer:", error.message)
-  // Fallback
-  try {
-    puppeteer = require("puppeteer")
-    chromium = null
-    console.log("[PDF] Usando fallback: puppeteer normal")
-  } catch (fallbackError: any) {
-    console.error("[PDF] Erro no fallback:", fallbackError.message)
-    throw new Error("Não foi possível carregar puppeteer")
+    try {
+      puppeteer = await import("puppeteer")
+      chromium = null
+    } catch (error: any) {
+      console.error("[PDF] Erro ao carregar puppeteer local:", error.message)
+      throw error
+    }
   }
 }
 
@@ -74,6 +77,9 @@ export async function GET(
     // Gerar HTML da nota
     const html = generateDebitNoteHTML(debitNote, contract, entity)
 
+    // Carregar puppeteer
+    const { puppeteer, chromium } = await loadPuppeteer()
+
     // Gerar PDF com Puppeteer
     console.log("[PDF] Preparando para gerar PDF...")
     
@@ -86,11 +92,10 @@ export async function GET(
     if (chromium) {
       try {
         console.log("[PDF] Configurando chromium para Vercel...")
-        chromium.setGraphicsMode = false // Desabilitar modo gráfico no Vercel
         launchOptions.executablePath = await chromium.executablePath()
-        console.log("[PDF] Chromium executável:", launchOptions.executablePath)
+        console.log("[PDF] Chromium executável configurado")
       } catch (chromiumError: any) {
-        console.error("[PDF] Erro ao configurar chromium:", chromiumError.message)
+        console.error("[PDF] Erro ao configurar chromium:", chromiumError.message, chromiumError.stack)
         throw new Error(`Erro ao configurar chromium: ${chromiumError.message}`)
       }
     }
