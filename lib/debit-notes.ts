@@ -11,9 +11,6 @@ import { formatDateISO, parseDateISO } from "@/lib/utils/dates"
 import { listSchedulesByContract, type ContractSchedule } from "./schedules"
 import { createCommitment, cancelCommitment } from "./commitments"
 import { getContractById } from "./contracts"
-import { createCommitment } from "./commitments"
-import { generateSchedules } from "./schedules"
-import { getContractById } from "./contracts"
 
 export type DebitNote = {
   id: string
