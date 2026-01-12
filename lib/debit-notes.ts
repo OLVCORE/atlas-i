@@ -581,12 +581,42 @@ export async function updateDebitNote(
     throw new Error(`Erro ao buscar itens: ${itemsError.message}`)
   }
   
-  // Separar schedules (imutáveis) de expenses/discounts (editáveis)
+  // Separar schedules (podem ser atualizados se o schedule foi recalculado) de expenses/discounts (editáveis)
   const scheduleItems = (currentItems || []).filter(item => item.contract_schedule_id !== null)
   const expenseDiscountItems = (currentItems || []).filter(item => item.contract_schedule_id === null)
   
-  // Calcular valor total dos schedules (imutável)
-  const schedulesAmount = scheduleItems.reduce((sum, item) => sum + Number(item.amount), 0)
+  // Buscar valores atualizados dos schedules (caso tenham sido recalculados)
+  const scheduleIds = scheduleItems.map(item => item.contract_schedule_id).filter(Boolean) as string[]
+  let schedulesAmount = 0
+  
+  if (scheduleIds.length > 0) {
+    const { data: updatedSchedules, error: schedulesError } = await supabase
+      .from("contract_schedules")
+      .select("id, amount")
+      .in("id", scheduleIds)
+      .eq("workspace_id", workspace.id)
+      .is("deleted_at", null)
+    
+    if (!schedulesError && updatedSchedules) {
+      // Usar valores atualizados dos schedules
+      schedulesAmount = updatedSchedules.reduce((sum, schedule) => sum + Number(schedule.amount), 0)
+      
+      // Atualizar amounts dos items de schedule se mudaram
+      for (const item of scheduleItems) {
+        const updatedSchedule = updatedSchedules.find(s => s.id === item.contract_schedule_id)
+        if (updatedSchedule && Number(updatedSchedule.amount) !== Number(item.amount)) {
+          await supabase
+            .from("debit_note_items")
+            .update({ amount: Number(updatedSchedule.amount) })
+            .eq("id", item.id)
+            .eq("workspace_id", workspace.id)
+        }
+      }
+    } else {
+      // Fallback: usar valores dos items atuais
+      schedulesAmount = scheduleItems.reduce((sum, item) => sum + Number(item.amount), 0)
+    }
+  }
   
   // Calcular valor total dos expenses e discounts
   const expensesAmount = (input.expenses || []).reduce((sum, e) => sum + Math.abs(e.amount || 0), 0)

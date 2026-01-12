@@ -7,8 +7,8 @@
 import { createClient } from "@/lib/supabase/server"
 import { getActiveWorkspace } from "@/lib/workspace"
 import { validateAmount, validateDateRange, validateNotEmpty } from "@/lib/utils/validation"
-import { parseDateISO } from "@/lib/utils/dates"
-import { generateContractSchedules, listSchedulesByContract } from "./schedules"
+import { parseDateISO, generateRecurrenceDates } from "@/lib/utils/dates"
+import { generateContractSchedules, listSchedulesByContract, recalculateContractSchedules } from "./schedules"
 import { logAudit } from "./audit"
 import { validateContractTransition, canEditContract, canCancelContract } from "./governance/state-transitions"
 
@@ -268,14 +268,68 @@ export async function updateContract(contractId: string, changes: UpdateContract
   if (changes.monthlyValue !== undefined) {
     validateAmount(changes.monthlyValue)
     updateData.monthly_value = changes.monthlyValue
+    
+    // Se value_type é 'monthly' e monthlyValue foi alterado, recalcular total_value
+    const finalValueType = changes.valueType || current.value_type
+    if (finalValueType === 'monthly' && changes.monthlyValue) {
+      // Calcular total_value baseado no número de meses do contrato
+      const startDate = parseDateISO(current.start_date)
+      const endDate = current.end_date ? parseDateISO(current.end_date) : null
+      const finalRecurrence = changes.recurrencePeriod || current.recurrence_period || 'monthly'
+      
+      if (endDate && endDate > startDate) {
+        // Calcular número de períodos
+        const dates = generateRecurrenceDates(startDate, endDate, finalRecurrence)
+        const numberOfPeriods = dates.length
+        const newTotalValue = Number(changes.monthlyValue) * numberOfPeriods
+        updateData.total_value = newTotalValue
+        console.log(`[contracts:update] Recalculando total_value: ${changes.monthlyValue} × ${numberOfPeriods} = ${newTotalValue}`)
+      }
+    }
   }
 
   if (changes.valueType) {
     updateData.value_type = changes.valueType
+    
+    // Se mudou para 'monthly' e tem monthlyValue, recalcular total_value
+    if (changes.valueType === 'monthly' && (changes.monthlyValue || current.monthly_value)) {
+      const monthlyValue = changes.monthlyValue || current.monthly_value
+      if (monthlyValue) {
+        const startDate = parseDateISO(current.start_date)
+        const endDate = current.end_date ? parseDateISO(current.end_date) : null
+        const finalRecurrence = changes.recurrencePeriod || current.recurrence_period || 'monthly'
+        
+        if (endDate && endDate > startDate) {
+          const dates = generateRecurrenceDates(startDate, endDate, finalRecurrence)
+          const numberOfPeriods = dates.length
+          const newTotalValue = Number(monthlyValue) * numberOfPeriods
+          updateData.total_value = newTotalValue
+          console.log(`[contracts:update] Recalculando total_value após mudança de value_type: ${monthlyValue} × ${numberOfPeriods} = ${newTotalValue}`)
+        }
+      }
+    }
   }
 
   if (changes.recurrencePeriod) {
     updateData.recurrence_period = changes.recurrencePeriod
+    
+    // Se tem monthlyValue e mudou recorrência, recalcular total_value
+    const finalValueType = changes.valueType || current.value_type
+    if (finalValueType === 'monthly' && (changes.monthlyValue || current.monthly_value)) {
+      const monthlyValue = changes.monthlyValue || current.monthly_value
+      if (monthlyValue) {
+        const startDate = parseDateISO(current.start_date)
+        const endDate = current.end_date ? parseDateISO(current.end_date) : null
+        
+        if (endDate && endDate > startDate) {
+          const dates = generateRecurrenceDates(startDate, endDate, changes.recurrencePeriod)
+          const numberOfPeriods = dates.length
+          const newTotalValue = Number(monthlyValue) * numberOfPeriods
+          updateData.total_value = newTotalValue
+          console.log(`[contracts:update] Recalculando total_value após mudança de recorrência: ${monthlyValue} × ${numberOfPeriods} = ${newTotalValue}`)
+        }
+      }
+    }
   }
 
   if (changes.adjustmentIndex) {
@@ -316,6 +370,27 @@ export async function updateContract(contractId: string, changes: UpdateContract
   
   if (error) {
     throw new Error(`Erro ao atualizar contrato: ${error.message}`)
+  }
+  
+  // Verificar se precisa recalcular schedules (se valores, datas ou recorrência mudaram)
+  const needsScheduleRecalculation = 
+    changes.monthlyValue !== undefined ||
+    changes.totalValue !== undefined ||
+    changes.valueType !== undefined ||
+    changes.recurrencePeriod !== undefined ||
+    changes.startDate !== undefined ||
+    changes.endDate !== undefined
+  
+  if (needsScheduleRecalculation) {
+    try {
+      console.log(`[contracts:update] Recalculando schedules do contrato ${contractId}`)
+      await recalculateContractSchedules(contractId)
+      console.log(`[contracts:update] Schedules recalculados com sucesso`)
+    } catch (scheduleError: any) {
+      console.error(`[contracts:update] Erro ao recalcular schedules:`, scheduleError?.message || scheduleError)
+      // Não falhar a atualização do contrato se o recálculo de schedules falhar
+      // Mas logar o erro para debug
+    }
   }
   
   // Gravar audit log

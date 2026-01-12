@@ -543,6 +543,83 @@ export async function generateContractSchedules(
 }
 
 /**
+ * Recalcula schedules de um contrato
+ * 
+ * REGRAS:
+ * - Cancela schedules não realizados (status = 'planned')
+ * - Regenera baseado nos parâmetros atuais do contrato
+ * - Mantém schedules já realizados (status = 'received' ou 'paid')
+ */
+export async function recalculateContractSchedules(contractId: string): Promise<ContractSchedule[]> {
+  const supabase = await createClient()
+  const workspace = await getActiveWorkspace()
+  
+  // Buscar contrato atualizado
+  const { data: contract, error: contractError } = await supabase
+    .from("contracts")
+    .select("*")
+    .eq("id", contractId)
+    .eq("workspace_id", workspace.id)
+    .is("deleted_at", null)
+    .single()
+  
+  if (contractError || !contract) {
+    throw new Error("Contrato não encontrado")
+  }
+  
+  // Buscar schedules existentes
+  const { data: existingSchedules, error: existingError } = await supabase
+    .from("contract_schedules")
+    .select("*")
+    .eq("contract_id", contractId)
+    .eq("workspace_id", workspace.id)
+    .is("deleted_at", null)
+  
+  if (existingError) {
+    throw new Error(`Erro ao buscar schedules existentes: ${existingError.message}`)
+  }
+  
+  // Separar schedules realizados dos não realizados
+  const realizedSchedules = (existingSchedules || []).filter(
+    (s: any) => s.status === 'received' || s.status === 'paid'
+  )
+  const plannedSchedules = (existingSchedules || []).filter(
+    (s: any) => s.status === 'planned'
+  )
+  
+  // Cancelar schedules não realizados (soft delete)
+  if (plannedSchedules.length > 0) {
+    const { error: cancelError } = await supabase
+      .from("contract_schedules")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("contract_id", contractId)
+      .eq("workspace_id", workspace.id)
+      .in("id", plannedSchedules.map((s: any) => s.id))
+    
+    if (cancelError) {
+      throw new Error(`Erro ao cancelar schedules antigos: ${cancelError.message}`)
+    }
+    
+    console.log(`[schedules:recalculateContractSchedules] ${plannedSchedules.length} schedule(s) cancelado(s)`)
+  }
+  
+  // Gerar novos schedules baseado nos parâmetros atuais do contrato
+  try {
+    const newSchedules = await generateContractSchedules(contractId, {
+      recurrence: (contract as any).recurrence_period || 'monthly',
+      type: 'receivable',
+    })
+    
+    console.log(`[schedules:recalculateContractSchedules] ${newSchedules.length} novo(s) schedule(s) gerado(s)`)
+    
+    // Retornar todos os schedules (realizados + novos)
+    return [...realizedSchedules, ...newSchedules]
+  } catch (error: any) {
+    throw new Error(`Erro ao gerar novos schedules: ${error.message}`)
+  }
+}
+
+/**
  * Gera um schedule único para um contrato (backward compatibility)
  */
 export async function generateContractSchedule(
