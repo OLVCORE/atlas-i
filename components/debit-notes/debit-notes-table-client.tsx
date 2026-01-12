@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Pencil, X } from "lucide-react"
+import { Pencil, X, Trash2 } from "lucide-react"
 import type { DebitNoteWithItems } from "@/lib/debit-notes"
 import type { Contract } from "@/lib/contracts"
 import { ReconcileDebitNoteDialog } from "./reconcile-debit-note-dialog"
@@ -31,6 +31,7 @@ type DebitNotesTableClientProps = {
   entities: Array<{ id: string; legal_name: string }>
   onUpdateAction?: (prevState: any, formData: FormData) => Promise<{ ok: boolean; error?: string; message?: string }>
   onCancelAction?: (debitNoteId: string) => Promise<void>
+  onDeleteAction?: (debitNoteId: string) => Promise<void>
 }
 
 export function DebitNotesTableClient({
@@ -39,6 +40,7 @@ export function DebitNotesTableClient({
   entities,
   onUpdateAction,
   onCancelAction,
+  onDeleteAction,
 }: DebitNotesTableClientProps) {
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [contractFilter, setContractFilter] = useState<string>("all")
@@ -208,6 +210,25 @@ export function DebitNotesTableClient({
                         title="Cancelar nota de débito"
                       >
                         <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                    {note.status === "cancelled" && onDeleteAction && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={async () => {
+                          if (confirm("Tem certeza que deseja deletar permanentemente esta nota de débito cancelada?")) {
+                            try {
+                              await onDeleteAction(note.id)
+                              window.location.reload()
+                            } catch (error) {
+                              alert(error instanceof Error ? error.message : "Erro ao deletar nota de débito")
+                            }
+                          }
+                        }}
+                        title="Deletar permanentemente"
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     )}
                   </div>

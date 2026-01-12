@@ -26,20 +26,36 @@ export async function GET(request: NextRequest) {
     const schedules = await listSchedulesByContract(contractId)
 
     // Filtrar apenas schedules disponíveis (planned, receivable)
-    // e que não já tenham nota de débito
-    const { data: existingItems, error: existingError } = await supabase
-      .from("debit_note_items")
-      .select("contract_schedule_id")
-      .in(
-        "contract_schedule_id",
-        schedules.map((s) => s.id)
-      )
+    // e que não já tenham nota de débito PAGA (canceladas liberam os schedules)
+    const { data: existingNotes, error: existingError } = await supabase
+      .from("debit_notes")
+      .select("id, status")
+      .eq("workspace_id", workspace.id)
+      .eq("contract_id", contractId)
+      .eq("status", "paid") // Apenas notas PAGAS bloqueiam schedules
+      .is("deleted_at", null)
 
     if (existingError) {
-      throw new Error(`Erro ao verificar schedules existentes: ${existingError.message}`)
+      throw new Error(`Erro ao verificar notas existentes: ${existingError.message}`)
     }
 
-    const usedScheduleIds = new Set(existingItems?.map((item) => item.contract_schedule_id) || [])
+    const paidNoteIds = new Set(existingNotes?.map((note) => note.id) || [])
+
+    // Buscar items apenas de notas pagas
+    let usedScheduleIds = new Set<string>()
+    if (paidNoteIds.size > 0) {
+      const { data: existingItems, error: itemsError } = await supabase
+        .from("debit_note_items")
+        .select("contract_schedule_id")
+        .in("debit_note_id", Array.from(paidNoteIds))
+        .not("contract_schedule_id", "is", null)
+
+      if (itemsError) {
+        throw new Error(`Erro ao verificar schedules existentes: ${itemsError.message}`)
+      }
+
+      usedScheduleIds = new Set(existingItems?.map((item) => item.contract_schedule_id) || [])
+    }
 
     const availableSchedules = schedules.filter(
       (s) =>

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { getActiveWorkspace } from "@/lib/workspace"
-import { updateDebitNote, cancelDebitNote } from "@/lib/debit-notes"
+import { updateDebitNote, cancelDebitNote, deleteDebitNote } from "@/lib/debit-notes"
 
 export async function PATCH(
   request: NextRequest,

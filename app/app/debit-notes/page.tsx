@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
-import { listDebitNotes, updateDebitNote } from "@/lib/debit-notes"
+import { listDebitNotes, updateDebitNote, deleteDebitNote } from "@/lib/debit-notes"
 import { listContracts } from "@/lib/contracts"
 import { listEntities } from "@/lib/entities"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -70,6 +70,18 @@ async function cancelDebitNoteAction(debitNoteId: string) {
     revalidatePath("/app/debit-notes")
   } catch (error: any) {
     console.error("[cancelDebitNoteAction] Erro:", error)
+    throw error
+  }
+}
+
+async function deleteDebitNoteAction(debitNoteId: string) {
+  "use server"
+  
+  try {
+    await deleteDebitNote(debitNoteId)
+    revalidatePath("/app/debit-notes")
+  } catch (error: any) {
+    console.error("[deleteDebitNoteAction] Erro:", error)
     throw error
   }
 }
@@ -189,6 +201,7 @@ export default async function DebitNotesPage() {
               entities={entities}
               onUpdateAction={updateDebitNoteAction}
               onCancelAction={cancelDebitNoteAction}
+              onDeleteAction={deleteDebitNoteAction}
             />
           </CardContent>
         </Card>

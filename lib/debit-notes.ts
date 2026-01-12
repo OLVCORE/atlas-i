@@ -251,6 +251,7 @@ export async function listDebitNotes(filters?: {
     .from("debit_notes")
     .select("*")
     .eq("workspace_id", workspace.id)
+    .is("deleted_at", null) // Apenas notas não deletadas (soft delete)
     .order("issued_date", { ascending: false })
     .order("sequence_number", { ascending: false })
   
@@ -735,3 +736,43 @@ export async function cancelDebitNote(debitNoteId: string): Promise<DebitNoteWit
   }
 }
 
+/**
+ * Deleta uma nota de débito permanentemente (soft delete)
+ * Apenas notas canceladas podem ser deletadas permanentemente
+ */
+export async function deleteDebitNote(debitNoteId: string): Promise<void> {
+  const supabase = await createClient()
+  const workspace = await getActiveWorkspace()
+  
+  // Buscar nota atual
+  const { data: currentNote, error: fetchError } = await supabase
+    .from("debit_notes")
+    .select("*")
+    .eq("id", debitNoteId)
+    .eq("workspace_id", workspace.id)
+    .is("deleted_at", null)
+    .single()
+  
+  if (fetchError || !currentNote) {
+    throw new Error("Nota de débito não encontrada")
+  }
+  
+  // Verificar se pode deletar (apenas canceladas podem ser deletadas)
+  if (currentNote.status !== 'cancelled') {
+    throw new Error("Apenas notas de débito canceladas podem ser deletadas permanentemente")
+  }
+  
+  // Soft delete: atualizar deleted_at
+  const { error: updateError } = await supabase
+    .from("debit_notes")
+    .update({
+      deleted_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", debitNoteId)
+    .eq("workspace_id", workspace.id)
+  
+  if (updateError) {
+    throw new Error(`Erro ao deletar nota de débito: ${updateError.message}`)
+  }
+}
