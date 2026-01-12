@@ -5,39 +5,38 @@ import { getDebitNoteById } from "@/lib/debit-notes"
 import { listContracts } from "@/lib/contracts"
 import { listEntities } from "@/lib/entities"
 
-// Usar puppeteer-core com chromium para Vercel
-let puppeteer: any
-let chromium: any
-
 // Detectar ambiente
 const isVercel = process.env.VERCEL === "1" || process.env.VERCEL_ENV
 
 // Carregar módulos dinamicamente
-async function loadPuppeteer() {
+function loadPuppeteer() {
+  let puppeteer: any
+  let chromium: any
+
   if (isVercel) {
-    // Vercel: usar puppeteer-core com @sparticuz/chromium
-    console.log("[PDF] Ambiente Vercel detectado, usando puppeteer-core + chromium")
+    // Vercel: usar puppeteer-core com @sparticuz/chromium-min
+    console.log("[PDF] Ambiente Vercel detectado, usando puppeteer-core + chromium-min")
     try {
-      chromium = await import("@sparticuz/chromium")
-      puppeteer = await import("puppeteer-core")
-      // Configurar chromium para Vercel
-      chromium.setGraphicsMode(false)
+      chromium = require("@sparticuz/chromium-min")
+      puppeteer = require("puppeteer-core")
       console.log("[PDF] Módulos carregados com sucesso")
     } catch (error: any) {
-      console.error("[PDF] Erro ao carregar módulos Vercel:", error.message)
-      throw error
+      console.error("[PDF] Erro ao carregar módulos Vercel:", error.message, error.stack)
+      throw new Error(`Erro ao carregar módulos: ${error.message}`)
     }
   } else {
     // Local: usar puppeteer normal
     console.log("[PDF] Ambiente local detectado, usando puppeteer")
     try {
-      puppeteer = await import("puppeteer")
+      puppeteer = require("puppeteer")
       chromium = null
     } catch (error: any) {
       console.error("[PDF] Erro ao carregar puppeteer local:", error.message)
-      throw error
+      throw new Error(`Erro ao carregar puppeteer: ${error.message}`)
     }
   }
+
+  return { puppeteer, chromium }
 }
 
 export async function GET(
@@ -78,7 +77,7 @@ export async function GET(
     const html = generateDebitNoteHTML(debitNote, contract, entity)
 
     // Carregar puppeteer
-    const { puppeteer, chromium } = await loadPuppeteer()
+    const { puppeteer, chromium } = loadPuppeteer()
 
     // Gerar PDF com Puppeteer
     console.log("[PDF] Preparando para gerar PDF...")
@@ -106,7 +105,7 @@ export async function GET(
       browser = await puppeteer.launch(launchOptions)
       console.log("[PDF] Browser iniciado com sucesso")
     } catch (launchError: any) {
-      console.error("[PDF] Erro ao iniciar browser:", launchError.message)
+      console.error("[PDF] Erro ao iniciar browser:", launchError.message, launchError.stack)
       throw new Error(`Erro ao iniciar browser: ${launchError.message}`)
     }
 
@@ -131,7 +130,7 @@ export async function GET(
       console.log("[PDF] PDF gerado com sucesso, tamanho:", pdfBuffer.length)
       await browser.close()
     } catch (pdfError: any) {
-      console.error("[PDF] Erro ao gerar PDF:", pdfError.message)
+      console.error("[PDF] Erro ao gerar PDF:", pdfError.message, pdfError.stack)
       if (browser) {
         await browser.close().catch(() => {})
       }
@@ -149,7 +148,7 @@ export async function GET(
       },
     })
   } catch (error: any) {
-    console.error("[api/debit-notes/pdf] Erro:", error)
+    console.error("[api/debit-notes/pdf] Erro completo:", error.message, error.stack)
     return NextResponse.json(
       { error: error.message || "Erro ao gerar PDF" },
       { status: 500 }
