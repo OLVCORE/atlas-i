@@ -298,8 +298,8 @@ export async function updateContract(contractId: string, changes: UpdateContract
     updateData.value_type = changes.valueType
     
     // Se mudou para 'monthly' e tem monthlyValue, recalcular total_value
-    if (changes.valueType === 'monthly' && (changes.monthlyValue || current.monthly_value)) {
-      const monthlyValue = changes.monthlyValue || current.monthly_value
+    if (changes.valueType === 'monthly' && (changes.monthlyValue !== undefined || current.monthly_value)) {
+      const monthlyValue = changes.monthlyValue !== undefined ? changes.monthlyValue : current.monthly_value
       if (monthlyValue) {
         const startDate = parseDateISO(current.start_date)
         const endDate = current.end_date ? parseDateISO(current.end_date) : null
@@ -321,8 +321,8 @@ export async function updateContract(contractId: string, changes: UpdateContract
     
     // Se tem monthlyValue e mudou recorrência, recalcular total_value
     const finalValueType = changes.valueType || current.value_type
-    if (finalValueType === 'monthly' && (changes.monthlyValue || current.monthly_value)) {
-      const monthlyValue = changes.monthlyValue || current.monthly_value
+    if (finalValueType === 'monthly' && (changes.monthlyValue !== undefined || current.monthly_value)) {
+      const monthlyValue = changes.monthlyValue !== undefined ? changes.monthlyValue : current.monthly_value
       if (monthlyValue) {
         const startDate = parseDateISO(current.start_date)
         const endDate = current.end_date ? parseDateISO(current.end_date) : null
