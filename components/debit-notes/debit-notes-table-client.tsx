@@ -216,17 +216,29 @@ export function DebitNotesTableClient({
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={async () => {
+                        onClick={async (e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          
                           if (confirm("Tem certeza que deseja deletar permanentemente esta nota de débito cancelada? Esta ação não pode ser desfeita.")) {
                             try {
-                              console.log("Deletando nota de débito:", note.id)
-                              await onDeleteAction(note.id)
-                              console.log("Nota deletada com sucesso, recarregando página...")
-                              // Usar router.refresh() em vez de window.location.reload() para melhor UX
-                              window.location.reload()
+                              console.log("[UI] Deletando nota de débito:", note.id)
+                              const result = await onDeleteAction(note.id)
+                              console.log("[UI] Resultado da deleção:", result)
+                              
+                              if (result.success) {
+                                // Aguardar um pouco para garantir que a deleção foi processada
+                                await new Promise(resolve => setTimeout(resolve, 500))
+                                
+                                console.log("[UI] Recarregando página...")
+                                window.location.reload()
+                              } else {
+                                alert(`Erro ao deletar nota de débito: ${result.error || "Erro desconhecido"}`)
+                              }
                             } catch (error) {
-                              console.error("Erro ao deletar:", error)
-                              alert(error instanceof Error ? error.message : "Erro ao deletar nota de débito")
+                              console.error("[UI] Erro ao deletar:", error)
+                              const errorMessage = error instanceof Error ? error.message : String(error)
+                              alert(`Erro ao deletar nota de débito: ${errorMessage}`)
                             }
                           }
                         }}
