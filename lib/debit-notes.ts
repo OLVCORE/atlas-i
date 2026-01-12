@@ -251,7 +251,7 @@ export async function listDebitNotes(filters?: {
     .from("debit_notes")
     .select("*")
     .eq("workspace_id", workspace.id)
-    .is("deleted_at", null) // Apenas notas não deletadas (soft delete)
+    // .is("deleted_at", null) // Temporariamente desabilitado até migration ser executada
     .order("issued_date", { ascending: false })
     .order("sequence_number", { ascending: false })
   
@@ -750,7 +750,7 @@ export async function deleteDebitNote(debitNoteId: string): Promise<void> {
     .select("*")
     .eq("id", debitNoteId)
     .eq("workspace_id", workspace.id)
-    .is("deleted_at", null)
+    // .is("deleted_at", null) // Temporariamente desabilitado até migration ser executada
     .single()
   
   if (fetchError || !currentNote) {
