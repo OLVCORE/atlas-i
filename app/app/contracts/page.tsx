@@ -88,31 +88,39 @@ async function updateContractAction(contractId: string, prevState: any, formData
       return { ok: false, error: "Contrato não encontrado" }
     }
 
-    // Preparar dados de atualização
+    // Preparar dados de atualização no formato correto (camelCase)
     const updateData: any = {
       title,
       description,
       currency,
-      start_date: startDate,
-      end_date: endDate && dateRegex.test(endDate) ? endDate : null,
-      value_type: valueType,
-      recurrence_period: recurrencePeriod,
-      adjustment_index: adjustmentIndex,
-      adjustment_frequency: adjustmentFrequency,
+      startDate,
+      endDate: endDate && dateRegex.test(endDate) ? endDate : null,
+      valueType,
+      recurrencePeriod,
+      adjustmentIndex,
+      adjustmentFrequency,
     }
 
-    if (totalValue !== null && totalValue > 0) {
-      updateData.total_value = totalValue
-    }
-
-    if (monthlyValue !== null && monthlyValue > 0) {
-      updateData.monthly_value = monthlyValue
+    // Se value_type é 'monthly' e monthlyValue foi fornecido, NÃO passar totalValue
+    // Deixar o updateContract calcular automaticamente
+    if (valueType === 'monthly' && monthlyValue !== null && monthlyValue > 0) {
+      updateData.monthlyValue = monthlyValue
+      // NÃO passar totalValue - será calculado automaticamente
+    } else if (totalValue !== null && totalValue > 0) {
+      // Se não é monthly, passar totalValue normalmente
+      updateData.totalValue = totalValue
+      if (monthlyValue !== null && monthlyValue > 0) {
+        updateData.monthlyValue = monthlyValue
+      }
+    } else if (monthlyValue !== null && monthlyValue > 0) {
+      updateData.monthlyValue = monthlyValue
     }
 
     if (adjustmentPercentage !== null) {
-      updateData.adjustment_percentage = adjustmentPercentage
+      updateData.adjustmentPercentage = adjustmentPercentage
     }
 
+    console.log('[updateContractAction] Dados de atualização:', updateData)
     await updateContract(contractId, updateData)
 
     revalidatePath("/app/contracts")

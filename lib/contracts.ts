@@ -260,11 +260,7 @@ export async function updateContract(contractId: string, changes: UpdateContract
     updateData.status = changes.status
   }
 
-  if (changes.totalValue !== undefined) {
-    validateAmount(changes.totalValue)
-    updateData.total_value = changes.totalValue
-  }
-
+  // Processar monthlyValue primeiro (pode recalcular totalValue)
   if (changes.monthlyValue !== undefined) {
     validateAmount(changes.monthlyValue)
     updateData.monthly_value = changes.monthlyValue
@@ -272,7 +268,7 @@ export async function updateContract(contractId: string, changes: UpdateContract
     // Se value_type é 'monthly' e monthlyValue foi alterado, recalcular total_value
     const finalValueType = changes.valueType || current.value_type
     if (finalValueType === 'monthly' && changes.monthlyValue) {
-      // Calcular total_value baseado no número de meses do contrato
+      // Calcular total_value baseado no número de períodos do contrato
       const startDate = parseDateISO(current.start_date)
       const endDate = current.end_date ? parseDateISO(current.end_date) : null
       const finalRecurrence = changes.recurrencePeriod || current.recurrence_period || 'monthly'
@@ -284,8 +280,18 @@ export async function updateContract(contractId: string, changes: UpdateContract
         const newTotalValue = Number(changes.monthlyValue) * numberOfPeriods
         updateData.total_value = newTotalValue
         console.log(`[contracts:update] Recalculando total_value: ${changes.monthlyValue} × ${numberOfPeriods} = ${newTotalValue}`)
+      } else {
+        // Se não tem endDate, usar apenas 1 período
+        updateData.total_value = Number(changes.monthlyValue)
+        console.log(`[contracts:update] Recalculando total_value (sem endDate): ${changes.monthlyValue}`)
       }
     }
+  }
+
+  // Processar totalValue apenas se não foi calculado automaticamente acima
+  if (changes.totalValue !== undefined && !updateData.total_value) {
+    validateAmount(changes.totalValue)
+    updateData.total_value = changes.totalValue
   }
 
   if (changes.valueType) {
