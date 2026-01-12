@@ -1,6 +1,11 @@
 {
   "crons": [
     { "path": "/api/cron/alerts", "schedule": "*/30 * * * *" }
-  ]
+  ],
+  "functions": {
+    "app/api/debit-notes/[id]/pdf/route.ts": {
+      "maxDuration": 60
+    }
+  }
 }
 
