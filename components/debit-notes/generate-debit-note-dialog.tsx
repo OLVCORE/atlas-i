@@ -165,15 +165,29 @@ export function GenerateDebitNoteDialog({ contracts }: GenerateDebitNoteDialogPr
       <AlertDialogTrigger asChild>
         <Button>Gerar Nota de Débito</Button>
       </AlertDialogTrigger>
-      <AlertDialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <AlertDialogHeader>
-          <AlertDialogTitle>Gerar Nota de Débito</AlertDialogTitle>
-          <AlertDialogDescription>
-            Selecione um contrato e os schedules para incluir na nota de débito
-          </AlertDialogDescription>
+      <AlertDialogContent className={isFullscreen ? "sm:max-w-[95vw] sm:h-[95vh] max-h-[95vh] overflow-hidden flex flex-col" : "max-w-2xl max-h-[90vh] overflow-y-auto"}>
+        <AlertDialogHeader className={isFullscreen ? "flex-shrink-0" : ""}>
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <AlertDialogTitle>Gerar Nota de Débito</AlertDialogTitle>
+              <AlertDialogDescription>
+                Selecione um contrato e os schedules para incluir na nota de débito
+              </AlertDialogDescription>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              className="ml-4"
+              title={isFullscreen ? "Minimizar" : "Expandir"}
+            >
+              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            </Button>
+          </div>
         </AlertDialogHeader>
 
-        <div className="space-y-4">
+        <div className={`space-y-4 ${isFullscreen ? "flex-1 flex flex-col overflow-hidden" : ""}`}>
           {/* Seleção de Contrato */}
           <div className="space-y-2">
             <Label htmlFor="contract">Contrato *</Label>
@@ -202,7 +216,7 @@ export function GenerateDebitNoteDialog({ contracts }: GenerateDebitNoteDialogPr
                   Nenhum schedule disponível para este contrato
                 </div>
               ) : (
-                <div className="border rounded-md max-h-[300px] overflow-y-auto">
+                <div className={`border rounded-md ${isFullscreen ? "flex-1 overflow-y-auto" : "max-h-[300px] overflow-y-auto"}`}>
                   <table className="w-full text-sm">
                     <thead className="bg-muted sticky top-0">
                       <tr>
@@ -274,7 +288,7 @@ export function GenerateDebitNoteDialog({ contracts }: GenerateDebitNoteDialogPr
           </div>
 
           {/* Line Items Editor */}
-          <div className="border-t pt-4">
+          <div className={`border-t pt-4 ${isFullscreen ? "flex-1 flex flex-col min-h-0 overflow-hidden" : ""}`}>
             <h3 className="text-lg font-semibold mb-4">Despesas e Descontos Adicionais</h3>
             <LineItemsEditor
               expenses={expenses}
@@ -288,7 +302,7 @@ export function GenerateDebitNoteDialog({ contracts }: GenerateDebitNoteDialogPr
           {error && <div className="text-sm text-destructive">{error}</div>}
         </div>
 
-        <AlertDialogFooter>
+        <AlertDialogFooter className={isFullscreen ? "flex-shrink-0" : ""}>
           <Button variant="outline" onClick={() => setOpen(false)} disabled={isLoading}>
             Cancelar
           </Button>
