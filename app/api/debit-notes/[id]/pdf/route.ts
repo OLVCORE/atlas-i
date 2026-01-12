@@ -9,14 +9,32 @@ import { listEntities } from "@/lib/entities"
 let puppeteer: any
 let chromium: any
 
+// Detectar ambiente
+const isVercel = process.env.VERCEL === "1" || process.env.VERCEL_ENV
+
 try {
-  // Tentar usar @sparticuz/chromium (para Vercel)
-  chromium = require("@sparticuz/chromium")
-  puppeteer = require("puppeteer-core")
-} catch {
-  // Fallback para puppeteer normal (desenvolvimento local)
-  puppeteer = require("puppeteer")
-  chromium = null
+  if (isVercel) {
+    // Vercel: usar puppeteer-core com @sparticuz/chromium
+    console.log("[PDF] Ambiente Vercel detectado, usando puppeteer-core + chromium")
+    chromium = require("@sparticuz/chromium")
+    puppeteer = require("puppeteer-core")
+  } else {
+    // Local: usar puppeteer normal
+    console.log("[PDF] Ambiente local detectado, usando puppeteer")
+    puppeteer = require("puppeteer")
+    chromium = null
+  }
+} catch (error: any) {
+  console.error("[PDF] Erro ao carregar puppeteer:", error.message)
+  // Fallback
+  try {
+    puppeteer = require("puppeteer")
+    chromium = null
+    console.log("[PDF] Usando fallback: puppeteer normal")
+  } catch (fallbackError: any) {
+    console.error("[PDF] Erro no fallback:", fallbackError.message)
+    throw new Error("Não foi possível carregar puppeteer")
+  }
 }
 
 export async function GET(
@@ -57,6 +75,8 @@ export async function GET(
     const html = generateDebitNoteHTML(debitNote, contract, entity)
 
     // Gerar PDF com Puppeteer
+    console.log("[PDF] Preparando para gerar PDF...")
+    
     const launchOptions: any = {
       headless: true,
       args: chromium ? chromium.args : ["--no-sandbox", "--disable-setuid-sandbox"],
@@ -64,25 +84,54 @@ export async function GET(
 
     // Se estiver no Vercel, usar chromium executável
     if (chromium) {
-      launchOptions.executablePath = await chromium.executablePath()
+      try {
+        console.log("[PDF] Configurando chromium para Vercel...")
+        chromium.setGraphicsMode = false // Desabilitar modo gráfico no Vercel
+        launchOptions.executablePath = await chromium.executablePath()
+        console.log("[PDF] Chromium executável:", launchOptions.executablePath)
+      } catch (chromiumError: any) {
+        console.error("[PDF] Erro ao configurar chromium:", chromiumError.message)
+        throw new Error(`Erro ao configurar chromium: ${chromiumError.message}`)
+      }
     }
 
-    const browser = await puppeteer.launch(launchOptions)
+    console.log("[PDF] Iniciando browser...")
+    let browser
+    try {
+      browser = await puppeteer.launch(launchOptions)
+      console.log("[PDF] Browser iniciado com sucesso")
+    } catch (launchError: any) {
+      console.error("[PDF] Erro ao iniciar browser:", launchError.message)
+      throw new Error(`Erro ao iniciar browser: ${launchError.message}`)
+    }
 
-    const page = await browser.newPage()
-    await page.setContent(html, { waitUntil: "networkidle0" })
-    const pdfBuffer = await page.pdf({
-      format: "A4",
-      printBackground: true,
-      margin: {
-        top: "20mm",
-        right: "15mm",
-        bottom: "20mm",
-        left: "15mm",
-      },
-    })
-
-    await browser.close()
+    let page
+    try {
+      console.log("[PDF] Criando nova página...")
+      page = await browser.newPage()
+      console.log("[PDF] Carregando HTML...")
+      await page.setContent(html, { waitUntil: "networkidle0" })
+      console.log("[PDF] Gerando PDF...")
+      const pdfBuffer = await page.pdf({
+        format: "A4",
+        printBackground: true,
+        margin: {
+          top: "20mm",
+          right: "15mm",
+          bottom: "20mm",
+          left: "15mm",
+        },
+      })
+      console.log("[PDF] PDF gerado com sucesso, tamanho:", pdfBuffer.length)
+      await browser.close()
+      return pdfBuffer
+    } catch (pdfError: any) {
+      console.error("[PDF] Erro ao gerar PDF:", pdfError.message)
+      if (browser) {
+        await browser.close().catch(() => {})
+      }
+      throw new Error(`Erro ao gerar PDF: ${pdfError.message}`)
+    }
 
     // Converter Buffer para Uint8Array para NextResponse
     const pdfArray = new Uint8Array(pdfBuffer)
