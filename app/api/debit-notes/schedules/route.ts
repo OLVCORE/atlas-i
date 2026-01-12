@@ -26,14 +26,14 @@ export async function GET(request: NextRequest) {
     const schedules = await listSchedulesByContract(contractId)
 
     // Filtrar apenas schedules disponíveis (planned, receivable)
-    // e que não já tenham nota de débito PAGA (canceladas liberam os schedules)
+    // e que não já tenham nota de débito PAGA (canceladas e deletadas liberam os schedules)
     const { data: existingNotes, error: existingError } = await supabase
       .from("debit_notes")
       .select("id, status")
       .eq("workspace_id", workspace.id)
       .eq("contract_id", contractId)
       .eq("status", "paid") // Apenas notas PAGAS bloqueiam schedules
-      .is("deleted_at", null)
+      // .is("deleted_at", null) // Temporariamente desabilitado até migration ser executada
 
     if (existingError) {
       throw new Error(`Erro ao verificar notas existentes: ${existingError.message}`)

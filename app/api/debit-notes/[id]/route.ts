@@ -54,13 +54,13 @@ export async function DELETE(
       return NextResponse.json({ error: "Não autenticado" }, { status: 401 })
     }
 
-    await cancelDebitNote(params.id)
+    await deleteDebitNote(params.id)
 
     return NextResponse.json({ success: true }, { status: 200 })
   } catch (error: any) {
     console.error("[api/debit-notes/[id]] Erro:", error)
     return NextResponse.json(
-      { error: error.message || "Erro ao cancelar nota de débito" },
+      { error: error.message || "Erro ao deletar nota de débito" },
       { status: 500 }
     )
   }

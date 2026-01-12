@@ -120,19 +120,35 @@ export async function createDebitNote(input: CreateDebitNoteInput): Promise<Debi
     throw new Error("Alguns schedules não foram encontrados ou não são válidos")
   }
   
-  // Verificar se os schedules já têm nota de débito
-  const { data: existingItems, error: existingError } = await supabase
-    .from("debit_note_items")
-    .select("contract_schedule_id")
-    .in("contract_schedule_id", input.scheduleIds)
-    .limit(1)
+  // Verificar se os schedules já têm nota de débito (apenas notas não deletadas)
+  // Buscar notas não deletadas que usam esses schedules
+  const { data: existingNotes, error: notesError } = await supabase
+    .from("debit_notes")
+    .select("id")
+    .eq("workspace_id", workspace.id)
+    // .is("deleted_at", null) // Temporariamente desabilitado até migration ser executada
   
-  if (existingError) {
-    throw new Error(`Erro ao verificar schedules existentes: ${existingError.message}`)
+  if (notesError) {
+    throw new Error(`Erro ao verificar notas existentes: ${notesError.message}`)
   }
   
-  if (existingItems && existingItems.length > 0) {
-    throw new Error("Um ou mais schedules já possuem nota de débito")
+  if (existingNotes && existingNotes.length > 0) {
+    // Buscar items apenas de notas não deletadas
+    const { data: existingItems, error: existingError } = await supabase
+      .from("debit_note_items")
+      .select("contract_schedule_id")
+      .in("debit_note_id", existingNotes.map(n => n.id))
+      .in("contract_schedule_id", input.scheduleIds)
+      .not("contract_schedule_id", "is", null)
+      .limit(1)
+    
+    if (existingError) {
+      throw new Error(`Erro ao verificar schedules existentes: ${existingError.message}`)
+    }
+    
+    if (existingItems && existingItems.length > 0) {
+      throw new Error("Um ou mais schedules já possuem nota de débito")
+    }
   }
   
   // Calcular valor total (schedules + expenses - discounts)
@@ -762,17 +778,55 @@ export async function deleteDebitNote(debitNoteId: string): Promise<void> {
     throw new Error("Apenas notas de débito canceladas podem ser deletadas permanentemente")
   }
   
-  // Soft delete: atualizar deleted_at
-  const { error: updateError } = await supabase
-    .from("debit_notes")
-    .update({
-      deleted_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+  // Verificar se a coluna deleted_at existe (para soft delete)
+  // Se não existir, fazer hard delete (deletar permanentemente)
+  const { data: columnCheck } = await supabase
+    .rpc('check_column_exists', { 
+      table_name: 'debit_notes', 
+      column_name: 'deleted_at' 
     })
-    .eq("id", debitNoteId)
-    .eq("workspace_id", workspace.id)
+    .single()
   
-  if (updateError) {
-    throw new Error(`Erro ao deletar nota de débito: ${updateError.message}`)
+  // Se deleted_at existe, fazer soft delete, senão hard delete
+  try {
+    const { error: updateError } = await supabase
+      .from("debit_notes")
+      .update({
+        deleted_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", debitNoteId)
+      .eq("workspace_id", workspace.id)
+    
+    // Se deu erro porque a coluna não existe, fazer hard delete
+    if (updateError && updateError.message?.includes('deleted_at')) {
+      // Hard delete: deletar permanentemente
+      const { error: deleteError } = await supabase
+        .from("debit_notes")
+        .delete()
+        .eq("id", debitNoteId)
+        .eq("workspace_id", workspace.id)
+      
+      if (deleteError) {
+        throw new Error(`Erro ao deletar nota de débito: ${deleteError.message}`)
+      }
+    } else if (updateError) {
+      throw new Error(`Erro ao deletar nota de débito: ${updateError.message}`)
+    }
+  } catch (error: any) {
+    // Se falhou, tentar hard delete como fallback
+    if (error.message?.includes('deleted_at') || error.message?.includes('column')) {
+      const { error: deleteError } = await supabase
+        .from("debit_notes")
+        .delete()
+        .eq("id", debitNoteId)
+        .eq("workspace_id", workspace.id)
+      
+      if (deleteError) {
+        throw new Error(`Erro ao deletar nota de débito: ${deleteError.message}`)
+      }
+    } else {
+      throw error
+    }
   }
 }

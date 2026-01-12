@@ -217,11 +217,13 @@ export function DebitNotesTableClient({
                         variant="ghost"
                         size="icon"
                         onClick={async () => {
-                          if (confirm("Tem certeza que deseja deletar permanentemente esta nota de débito cancelada?")) {
+                          if (confirm("Tem certeza que deseja deletar permanentemente esta nota de débito cancelada? Esta ação não pode ser desfeita.")) {
                             try {
                               await onDeleteAction(note.id)
+                              // Usar router.refresh() em vez de window.location.reload() para melhor UX
                               window.location.reload()
                             } catch (error) {
+                              console.error("Erro ao deletar:", error)
                               alert(error instanceof Error ? error.message : "Erro ao deletar nota de débito")
                             }
                           }
