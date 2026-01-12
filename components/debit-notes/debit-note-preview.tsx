@@ -235,6 +235,16 @@ export default function DebitNotePreview({
           </tbody>
         </table>
 
+        {/* Observações */}
+        {debitNote.notes && (
+          <div className="mt-8 pt-6 border-t border-gray-300">
+            <h3 className="font-semibold mb-2 text-gray-900 print:text-black">Observações:</h3>
+            <div className="text-sm text-gray-700 print:text-black whitespace-pre-line">
+              {debitNote.notes}
+            </div>
+          </div>
+        )}
+
         <div className="mt-8 pt-6 border-t border-gray-300 text-xs text-gray-600 print:text-gray-700 text-center">
           <p>Esta nota de débito foi gerada automaticamente pelo sistema ATLAS-i</p>
           <p className="mt-1">

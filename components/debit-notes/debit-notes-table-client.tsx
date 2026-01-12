@@ -147,12 +147,12 @@ export function DebitNotesTableClient({
             <TableRow>
               <TableHead>Número</TableHead>
               <TableHead>Contrato</TableHead>
-              <TableHead>Cliente</TableHead>
+              <TableHead>Entidade</TableHead>
               <TableHead>Valor</TableHead>
               <TableHead>Emissão</TableHead>
               <TableHead>Vencimento</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="text-right">Ações</TableHead>
+              <TableHead className="text-right">Visualizar</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -176,9 +176,8 @@ export function DebitNotesTableClient({
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
                     <Link href={`/app/debit-notes/${note.id}/preview`}>
-                      <Button variant="outline" size="sm" className="flex items-center gap-2">
+                      <Button variant="ghost" size="icon" title="Visualizar">
                         <Eye className="h-4 w-4" />
-                        Visualizar
                       </Button>
                     </Link>
                     {note.status === "sent" && (

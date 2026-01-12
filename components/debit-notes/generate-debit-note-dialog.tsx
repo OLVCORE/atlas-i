@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -37,6 +38,8 @@ export function GenerateDebitNoteDialog({ contracts }: GenerateDebitNoteDialogPr
   const [schedules, setSchedules] = useState<ContractSchedule[]>([])
   const [selectedScheduleIds, setSelectedScheduleIds] = useState<Set<string>>(new Set())
   const [description, setDescription] = useState("")
+  const [clientName, setClientName] = useState("")
+  const [notes, setNotes] = useState("")
   const [expenses, setExpenses] = useState<LineItem[]>([])
   const [discounts, setDiscounts] = useState<LineItem[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -146,6 +149,8 @@ export function GenerateDebitNoteDialog({ contracts }: GenerateDebitNoteDialogPr
       setSchedules([])
       setSelectedScheduleIds(new Set())
       setDescription("")
+      setClientName("")
+      setNotes("")
       setExpenses([])
       setDiscounts([])
     } catch (err) {
@@ -285,6 +290,29 @@ export function GenerateDebitNoteDialog({ contracts }: GenerateDebitNoteDialogPr
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Ex: Fatura mensal - jan/2025"
+              />
+            </div>
+
+            {/* Nome do Cliente */}
+            <div className="space-y-2">
+              <Label htmlFor="clientName">Nome do Cliente (opcional)</Label>
+              <Input
+                id="clientName"
+                value={clientName}
+                onChange={(e) => setClientName(e.target.value)}
+                placeholder="Ex: Kelludy Festas e Eventos"
+              />
+            </div>
+
+            {/* Observações */}
+            <div className="space-y-2">
+              <Label htmlFor="notes">Observações (opcional)</Label>
+              <Textarea
+                id="notes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Informações de depósito/PIX, informações pertinentes ao contrato..."
+                rows={4}
               />
             </div>
           </div>

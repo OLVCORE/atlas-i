@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { LineItemsEditor, type LineItem } from "@/components/contracts/line-items-editor"
 import type { DebitNoteWithItems } from "@/lib/debit-notes"
 
@@ -34,6 +35,8 @@ export function DebitNoteEditDialog({
   const [expenses, setExpenses] = useState<LineItem[]>([])
   const [discounts, setDiscounts] = useState<LineItem[]>([])
   const [description, setDescription] = useState("")
+  const [clientName, setClientName] = useState("")
+  const [notes, setNotes] = useState("")
   const [issuedDate, setIssuedDate] = useState("")
   const [dueDate, setDueDate] = useState("")
   const [loadingItems, setLoadingItems] = useState(false)
@@ -58,6 +61,8 @@ export function DebitNoteEditDialog({
       setExpenses(expensesItems)
       setDiscounts(discountsItems)
       setDescription(debitNote.description || "")
+      setClientName(debitNote.client_name || "")
+      setNotes(debitNote.notes || "")
       setIssuedDate(debitNote.issued_date)
       setDueDate(debitNote.due_date)
     } catch (error) {
@@ -153,6 +158,31 @@ export function DebitNoteEditDialog({
               />
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="client_name">Nome do Cliente (opcional)</Label>
+              <Input
+                id="client_name"
+                name="client_name"
+                value={clientName}
+                onChange={(e) => setClientName(e.target.value)}
+                placeholder="Ex: Kelludy Festas e Eventos"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="notes">Observações (opcional)</Label>
+            <Textarea
+              id="notes"
+              name="notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Informações de depósito/PIX, informações pertinentes ao contrato..."
+              rows={4}
+            />
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="issued_date">Data de Emissão</Label>
               <Input

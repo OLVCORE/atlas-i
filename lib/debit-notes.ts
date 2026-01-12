@@ -23,6 +23,8 @@ export type DebitNote = {
   currency: string
   status: 'draft' | 'sent' | 'paid' | 'cancelled'
   description: string | null
+  client_name: string | null
+  notes: string | null
   linked_transaction_id: string | null
   created_at: string
   updated_at: string
@@ -49,6 +51,8 @@ export type CreateDebitNoteInput = {
   issuedDate?: string | Date
   dueDate?: string | Date
   description?: string
+  clientName?: string | null
+  notes?: string | null
   expenses?: Array<{ description?: string | null; amount: number }>
   discounts?: Array<{ description?: string | null; amount: number }>
 }
@@ -192,6 +196,8 @@ export async function createDebitNote(input: CreateDebitNoteInput): Promise<Debi
       currency: 'BRL',
       status: 'draft',
       description: input.description || null,
+      client_name: input.clientName || null,
+      notes: input.notes || null,
     })
     .select()
     .single()
@@ -527,6 +533,8 @@ export type UpdateDebitNoteInput = {
   description?: string | null
   issuedDate?: string | Date
   dueDate?: string | Date
+  clientName?: string | null
+  notes?: string | null
   expenses?: Array<{ description?: string | null; amount: number }>
   discounts?: Array<{ description?: string | null; amount: number }>
 }
@@ -593,6 +601,14 @@ export async function updateDebitNote(
   
   if (input.description !== undefined) {
     updateData.description = input.description
+  }
+  
+  if (input.clientName !== undefined) {
+    updateData.client_name = input.clientName
+  }
+  
+  if (input.notes !== undefined) {
+    updateData.notes = input.notes
   }
   
   if (input.issuedDate) {
@@ -768,39 +784,44 @@ export async function deleteDebitNote(debitNoteId: string): Promise<void> {
   
   console.log("[deleteDebitNote] Iniciando deleção:", { debitNoteId, workspaceId: workspace.id })
   
-  // Buscar nota atual
+  // Buscar nota atual (sem filtrar deleted_at para poder deletar)
   const { data: currentNote, error: fetchError } = await supabase
     .from("debit_notes")
     .select("*")
     .eq("id", debitNoteId)
     .eq("workspace_id", workspace.id)
-    // .is("deleted_at", null) // Temporariamente desabilitado até migration ser executada
     .single()
   
   if (fetchError || !currentNote) {
     console.error("[deleteDebitNote] Erro ao buscar nota:", fetchError)
-    throw new Error("Nota de débito não encontrada")
+    throw new Error(`Nota de débito não encontrada: ${fetchError?.message || "Nota não existe"}`)
   }
   
-  console.log("[deleteDebitNote] Nota encontrada:", { id: currentNote.id, status: currentNote.status })
+  console.log("[deleteDebitNote] Nota encontrada:", { id: currentNote.id, status: currentNote.status, deleted_at: currentNote.deleted_at })
   
   // Verificar se pode deletar (apenas canceladas podem ser deletadas)
   if (currentNote.status !== 'cancelled') {
     throw new Error("Apenas notas de débito canceladas podem ser deletadas permanentemente")
   }
   
-  // Como a coluna deleted_at provavelmente não existe ainda, fazer hard delete diretamente
+  // Verificar se já está deletada
+  if (currentNote.deleted_at) {
+    console.log("[deleteDebitNote] Nota já está deletada (soft delete), fazendo hard delete...")
+  }
+  
+  // Fazer hard delete (deleção física permanente)
   console.log("[deleteDebitNote] Fazendo hard delete (deleção física)...")
-  const { error: deleteError } = await supabase
+  const { error: deleteError, count } = await supabase
     .from("debit_notes")
     .delete()
     .eq("id", debitNoteId)
     .eq("workspace_id", workspace.id)
+    .select()
   
   if (deleteError) {
     console.error("[deleteDebitNote] Erro ao deletar:", deleteError)
     throw new Error(`Erro ao deletar nota de débito: ${deleteError.message}`)
   }
   
-  console.log("[deleteDebitNote] Nota deletada com sucesso")
+  console.log("[deleteDebitNote] Nota deletada com sucesso", { count })
 }

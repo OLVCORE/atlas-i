@@ -18,6 +18,8 @@ async function updateDebitNoteAction(prevState: any, formData: FormData) {
     }
 
     const description = formData.get("description") as string | null
+    const clientName = formData.get("client_name") as string | null
+    const notes = formData.get("notes") as string | null
     const issuedDate = formData.get("issued_date") as string | null
     const dueDate = formData.get("due_date") as string | null
 
@@ -47,6 +49,8 @@ async function updateDebitNoteAction(prevState: any, formData: FormData) {
 
     await updateDebitNote(debitNoteId, {
       description: description || null,
+      clientName: clientName || null,
+      notes: notes || null,
       issuedDate: issuedDate || undefined,
       dueDate: dueDate || undefined,
       expenses,
@@ -74,18 +78,25 @@ async function cancelDebitNoteAction(debitNoteId: string) {
   }
 }
 
-async function deleteDebitNoteAction(debitNoteId: string) {
+async function deleteDebitNoteAction(debitNoteId: string): Promise<{ success: boolean; error?: string }> {
   "use server"
   
   try {
     console.log("[deleteDebitNoteAction] Iniciando deleção da nota:", debitNoteId)
+    
+    if (!debitNoteId || typeof debitNoteId !== 'string') {
+      return { success: false, error: "ID da nota de débito inválido" }
+    }
+    
     await deleteDebitNote(debitNoteId)
     console.log("[deleteDebitNoteAction] Nota deletada com sucesso")
+    
     revalidatePath("/app/debit-notes")
     return { success: true }
   } catch (error: any) {
-    console.error("[deleteDebitNoteAction] Erro:", error)
-    throw error
+    console.error("[deleteDebitNoteAction] Erro completo:", error)
+    const errorMessage = error?.message || String(error) || "Erro desconhecido ao deletar nota de débito"
+    return { success: false, error: errorMessage }
   }
 }
 
