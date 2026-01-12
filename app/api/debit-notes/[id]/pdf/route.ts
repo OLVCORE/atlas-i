@@ -116,18 +116,22 @@ export async function GET(
       try {
         console.log("[PDF] Configurando chromium para Vercel...")
         
-        // Usar executablePath apenas se disponível, caso contrário usar configuração padrão
+        // Obter executablePath do chromium (pode falhar no Vercel, então temos fallback)
+        // No Vercel, o chromium pode não precisar de executablePath explícito
         try {
+          // Tentar obter executablePath de forma assíncrona
           const executablePath = await chromium.executablePath()
-          if (executablePath) {
+          if (executablePath && executablePath.length > 0 && !executablePath.includes('/var/task/.next')) {
             launchOptions.executablePath = executablePath
-            console.log("[PDF] Chromium executablePath obtido com sucesso")
+            console.log("[PDF] Chromium executablePath obtido:", executablePath.substring(0, 50) + "...")
           } else {
-            console.log("[PDF] executablePath não disponível, usando configuração padrão")
+            console.log("[PDF] executablePath inválido ou aponta para diretório inexistente, usando busca automática")
+            // Não definir executablePath, deixar o puppeteer-core encontrar automaticamente
           }
         } catch (exeError: any) {
-          // Se falhar ao obter executablePath, tentar sem ele (pode funcionar em alguns casos)
-          console.log("[PDF] Não foi possível obter executablePath, continuando sem ele:", exeError.message)
+          // Se falhar, não definir executablePath - o puppeteer-core pode encontrar automaticamente
+          console.log("[PDF] Erro ao obter executablePath (esperado no Vercel):", exeError.message)
+          console.log("[PDF] Continuando sem executablePath explícito - puppeteer-core tentará encontrar automaticamente")
         }
         
         // Adicionar configurações padrão do chromium
