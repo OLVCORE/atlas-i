@@ -70,7 +70,8 @@ export default function DebitNotePreview({
   const expenseItems = sortedItems.filter((item: any) => item.type === "expense")
   const discountItems = sortedItems.filter((item: any) => item.type === "discount")
 
-  // Calcular subtotais
+  // Calcular subtotais conforme solicitado:
+  // Subtotal 1: Schedules + Despesas (tudo positivo)
   const schedulesSubtotal = scheduleItems.reduce(
     (sum, item) => sum + Number(item.amount),
     0
@@ -79,7 +80,9 @@ export default function DebitNotePreview({
     (sum, item) => sum + Math.abs(Number(item.amount)),
     0
   )
-  // Descontos são sempre valores positivos no banco, mas devem ser subtraídos
+  const subtotal1 = schedulesSubtotal + expensesSubtotal // Schedules + Despesas
+  
+  // Subtotal 2: Total dos descontos (valores negativos)
   const discountsSubtotal = discountItems.reduce(
     (sum, item) => sum + Math.abs(Number(item.amount)),
     0
