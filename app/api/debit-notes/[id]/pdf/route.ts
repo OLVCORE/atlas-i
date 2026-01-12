@@ -14,21 +14,24 @@ function loadPuppeteer() {
   let chromium: any
 
   if (isVercel) {
-    // Vercel: tentar múltiplas abordagens
+    // Vercel: usar @sparticuz/chromium (versão recomendada pela documentação)
     console.log("[PDF] Ambiente Vercel detectado")
     
-    // Tentativa 1: @sparticuz/chromium-min
     try {
-      chromium = require("@sparticuz/chromium-min")
+      // Priorizar @sparticuz/chromium (versão completa recomendada)
+      chromium = require("@sparticuz/chromium")
       puppeteer = require("puppeteer-core")
-      console.log("[PDF] Usando @sparticuz/chromium-min + puppeteer-core")
+      console.log("[PDF] Usando @sparticuz/chromium + puppeteer-core")
+      
+      // Configurar chromium para Vercel
+      chromium.setGraphicsMode(false)
     } catch (error1: any) {
-      console.log("[PDF] Fallback 1 falhou, tentando @sparticuz/chromium...")
-      // Tentativa 2: @sparticuz/chromium (versão completa)
+      console.log("[PDF] Fallback: tentando @sparticuz/chromium-min...")
+      // Fallback: @sparticuz/chromium-min
       try {
-        chromium = require("@sparticuz/chromium")
+        chromium = require("@sparticuz/chromium-min")
         puppeteer = require("puppeteer-core")
-        console.log("[PDF] Usando @sparticuz/chromium + puppeteer-core")
+        console.log("[PDF] Usando @sparticuz/chromium-min + puppeteer-core")
       } catch (error2: any) {
         console.error("[PDF] Erro ao carregar módulos Vercel:", error2.message)
         throw new Error(`Erro ao carregar módulos: ${error2.message}`)
@@ -101,12 +104,17 @@ export async function GET(
       args: chromium ? chromium.args : ["--no-sandbox", "--disable-setuid-sandbox"],
     }
 
-    // Se estiver no Vercel, usar chromium executável
+    // Se estiver no Vercel, usar chromium executável com configuração recomendada
     if (chromium) {
       try {
         console.log("[PDF] Configurando chromium para Vercel...")
         launchOptions.executablePath = await chromium.executablePath()
-        console.log("[PDF] Chromium executável configurado")
+        launchOptions.defaultViewport = chromium.defaultViewport
+        launchOptions.headless = chromium.headless
+        console.log("[PDF] Chromium configurado:", {
+          executablePath: launchOptions.executablePath ? "OK" : "FALHOU",
+          argsCount: launchOptions.args?.length || 0,
+        })
       } catch (chromiumError: any) {
         console.error("[PDF] Erro ao configurar chromium:", chromiumError.message, chromiumError.stack)
         throw new Error(`Erro ao configurar chromium: ${chromiumError.message}`)
