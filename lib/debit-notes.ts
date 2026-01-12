@@ -120,11 +120,11 @@ export async function createDebitNote(input: CreateDebitNoteInput): Promise<Debi
     throw new Error("Alguns schedules não foram encontrados ou não são válidos")
   }
   
-  // Verificar se os schedules já têm nota de débito (apenas notas não deletadas)
-  // Buscar notas não deletadas que usam esses schedules
-  const { data: existingNotes, error: notesError } = await supabase
+  // Verificar se os schedules já têm nota de débito (apenas notas não canceladas)
+  // Notas canceladas e deletadas liberam os schedules para uso
+  const { data: allNotes, error: notesError } = await supabase
     .from("debit_notes")
-    .select("id")
+    .select("id, status")
     .eq("workspace_id", workspace.id)
     // .is("deleted_at", null) // Temporariamente desabilitado até migration ser executada
   
@@ -132,12 +132,18 @@ export async function createDebitNote(input: CreateDebitNoteInput): Promise<Debi
     throw new Error(`Erro ao verificar notas existentes: ${notesError.message}`)
   }
   
-  if (existingNotes && existingNotes.length > 0) {
-    // Buscar items apenas de notas não deletadas
+  // Filtrar apenas notas não canceladas (canceladas liberam os schedules)
+  // Notas deletadas também liberam os schedules
+  const activeNoteIds = (allNotes || [])
+    .filter(note => note.status !== 'cancelled')
+    .map(note => note.id)
+  
+  if (activeNoteIds.length > 0) {
+    // Buscar items apenas de notas ativas (não canceladas)
     const { data: existingItems, error: existingError } = await supabase
       .from("debit_note_items")
       .select("contract_schedule_id")
-      .in("debit_note_id", existingNotes.map(n => n.id))
+      .in("debit_note_id", activeNoteIds)
       .in("contract_schedule_id", input.scheduleIds)
       .not("contract_schedule_id", "is", null)
       .limit(1)
