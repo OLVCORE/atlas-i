@@ -291,11 +291,9 @@ export async function updateContract(contractId: string, changes: UpdateContract
         const numberOfPeriods = dates.length
         const newTotalValue = Number(changes.monthlyValue) * numberOfPeriods
         updateData.total_value = newTotalValue
-        console.log(`[contracts:update] Recalculando total_value: ${changes.monthlyValue} × ${numberOfPeriods} = ${newTotalValue}`)
       } else {
         // Se não tem endDate, usar apenas 1 período
         updateData.total_value = Number(changes.monthlyValue)
-        console.log(`[contracts:update] Recalculando total_value (sem endDate): ${changes.monthlyValue}`)
       }
     }
   }
@@ -322,7 +320,6 @@ export async function updateContract(contractId: string, changes: UpdateContract
           const numberOfPeriods = dates.length
           const newTotalValue = Number(monthlyValue) * numberOfPeriods
           updateData.total_value = newTotalValue
-          console.log(`[contracts:update] Recalculando total_value após mudança de value_type: ${monthlyValue} × ${numberOfPeriods} = ${newTotalValue}`)
         }
       }
     }
@@ -344,7 +341,6 @@ export async function updateContract(contractId: string, changes: UpdateContract
           const numberOfPeriods = dates.length
           const newTotalValue = Number(monthlyValue) * numberOfPeriods
           updateData.total_value = newTotalValue
-          console.log(`[contracts:update] Recalculando total_value após mudança de recorrência: ${monthlyValue} × ${numberOfPeriods} = ${newTotalValue}`)
         }
       }
     }
