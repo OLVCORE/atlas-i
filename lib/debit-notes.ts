@@ -9,6 +9,11 @@ import { getActiveWorkspace } from "@/lib/workspace"
 import { validateAmount, validateNotEmpty } from "@/lib/utils/validation"
 import { formatDateISO, parseDateISO } from "@/lib/utils/dates"
 import { listSchedulesByContract, type ContractSchedule } from "./schedules"
+import { createCommitment, cancelCommitment } from "./commitments"
+import { getContractById } from "./contracts"
+import { createCommitment } from "./commitments"
+import { generateSchedules } from "./schedules"
+import { getContractById } from "./contracts"
 
 export type DebitNote = {
   id: string
@@ -259,10 +264,114 @@ export async function createDebitNote(input: CreateDebitNoteInput): Promise<Debi
     
     throw new Error(`Erro ao criar itens da nota: ${itemsError.message}`)
   }
+
+  // Provisionar despesas como financial_commitments
+  // Buscar contrato para obter a entidade do workspace (usar entity_id do workspace, não counterparty)
+  const contract = await getContractById(input.contractId)
+  if (!contract) {
+    // Rollback: deletar nota e itens criados
+    await supabase.from("debit_note_items").delete().eq("debit_note_id", debitNote.id)
+    await supabase.from("debit_notes").delete().eq("id", debitNote.id).eq("workspace_id", workspace.id)
+    throw new Error("Contrato não encontrado")
+  }
+
+  // Buscar a entidade do workspace (a entidade que emite a nota)
+  // Precisamos buscar todas as entidades do workspace e usar a primeira (ou criar uma lógica para identificar)
+  const { data: workspaceEntities, error: entitiesError } = await supabase
+    .from("entities")
+    .select("id")
+    .eq("workspace_id", workspace.id)
+    .limit(1)
+    .single()
+
+  if (entitiesError || !workspaceEntities) {
+    // Se não encontrar entidade, usar a entidade do contrato (counterparty)
+    // Mas isso não está correto para despesas - despesas são da empresa que emite
+    // Por enquanto, vamos usar a counterparty_entity_id como fallback, mas idealmente deveria ter uma entidade padrão do workspace
+  }
+
+  const entityId = workspaceEntities?.id || contract.counterparty_entity_id
+
+  // Criar financial_commitments e financial_schedules para cada despesa
+  if (input.expenses && input.expenses.length > 0) {
+    const expenseCommitments: Array<{ itemId: string; commitmentId: string }> = []
+    
+    for (let i = 0; i < input.expenses.length; i++) {
+      const expense = input.expenses[i]
+      const expenseItem = items?.find(
+        item => item.type === 'expense' && 
+        (!expense.description || item.description === expense.description) &&
+        Math.abs(Number(item.amount) - Math.abs(expense.amount)) < 0.01 // Comparação de valores com tolerância
+      )
+
+      if (!expenseItem) {
+        continue // Item não foi criado corretamente, pular
+      }
+
+      try {
+        // Criar financial_commitment do tipo 'expense' para esta despesa
+        const commitment = await createCommitment({
+          entityId: entityId,
+          type: 'expense',
+          category: 'Serviços Profissionais', // Categoria padrão para despesas de notas de débito
+          description: expense.description || `Despesa - Nota de Débito ${debitNote.number}`,
+          totalAmount: Math.abs(expense.amount),
+          currency: 'BRL',
+          startDate: dueDate, // Data de vencimento da nota de débito
+          endDate: null,
+          recurrence: 'none',
+          autoGenerateSchedules: true, // Gerar schedule automaticamente
+        })
+
+        // Atualizar debit_note_item com o financial_commitment_id
+        const { error: updateError } = await supabase
+          .from("debit_note_items")
+          .update({ financial_commitment_id: commitment.id })
+          .eq("id", expenseItem.id)
+          .eq("workspace_id", workspace.id)
+
+        if (updateError) {
+          // Rollback: deletar commitment e schedule criados
+          await supabase.from("financial_schedules").delete().eq("commitment_id", commitment.id)
+          await supabase.from("financial_commitments").delete().eq("id", commitment.id).eq("workspace_id", workspace.id)
+          throw new Error(`Erro ao vincular compromisso ao item: ${updateError.message}`)
+        }
+
+        expenseCommitments.push({ itemId: expenseItem.id, commitmentId: commitment.id })
+      } catch (commitmentError: any) {
+        // Se falhar ao criar compromisso, fazer rollback de todos os compromissos criados
+        const errorMessage = commitmentError?.message || String(commitmentError) || "Erro ao criar compromisso para despesa"
+        
+        // Deletar todos os compromissos já criados
+        for (const { commitmentId } of expenseCommitments) {
+          await supabase.from("financial_schedules").delete().eq("commitment_id", commitmentId)
+          await supabase.from("financial_commitments").delete().eq("id", commitmentId).eq("workspace_id", workspace.id)
+        }
+
+        // Deletar itens e nota
+        await supabase.from("debit_note_items").delete().eq("debit_note_id", debitNote.id)
+        await supabase.from("debit_notes").delete().eq("id", debitNote.id).eq("workspace_id", workspace.id)
+        
+        throw new Error(`Erro ao provisionar despesas: ${errorMessage}`)
+      }
+    }
+  }
+
+  // Buscar itens atualizados com financial_commitment_id
+  const { data: finalItems, error: finalItemsError } = await supabase
+    .from("debit_note_items")
+    .select("*")
+    .eq("debit_note_id", debitNote.id)
+    .eq("workspace_id", workspace.id)
+
+  if (finalItemsError) {
+    // Não fazer rollback aqui, apenas logar o erro
+    // Os itens já foram criados, apenas não conseguimos buscar com os commitment_ids
+  }
   
   return {
     ...debitNote,
-    items: items || [],
+    items: finalItems || items || [],
   }
 }
 
@@ -673,6 +782,30 @@ export async function updateDebitNote(
     throw new Error(`Erro ao atualizar nota de débito: ${updateError.message}`)
   }
   
+  // Cancelar/deletar compromissos de despesas antigas antes de deletar os itens
+  const expenseItemsWithCommitments = expenseDiscountItems.filter(
+    item => item.type === 'expense' && (item as any).financial_commitment_id
+  )
+  
+  if (expenseItemsWithCommitments.length > 0) {
+    const commitmentIds = expenseItemsWithCommitments
+      .map(item => (item as any).financial_commitment_id)
+      .filter(Boolean) as string[]
+    
+    for (const commitmentId of commitmentIds) {
+      try {
+        // Cancelar o compromisso (não deletar, apenas cancelar para manter histórico)
+        await cancelCommitment(commitmentId)
+      } catch (commitmentError: any) {
+        // Se já foi cancelado ou não existe, continuar
+        const errorMessage = commitmentError?.message || String(commitmentError) || "Erro desconhecido"
+        if (!errorMessage.includes("não encontrado") && !errorMessage.includes("já cancelado")) {
+          // Logar erros não esperados, mas não bloquear a atualização
+        }
+      }
+    }
+  }
+
   // Deletar expenses/discounts antigos
   if (expenseDiscountItems.length > 0) {
     const { error: deleteError } = await supabase
@@ -776,6 +909,38 @@ export async function cancelDebitNote(debitNoteId: string): Promise<DebitNoteWit
     }
   }
   
+  // Buscar itens com financial_commitment_id (despesas provisionadas)
+  const { data: itemsWithCommitments, error: itemsError } = await supabase
+    .from("debit_note_items")
+    .select("id, financial_commitment_id")
+    .eq("debit_note_id", debitNoteId)
+    .eq("workspace_id", workspace.id)
+    .not("financial_commitment_id", "is", null)
+  
+  if (itemsError) {
+    throw new Error(`Erro ao buscar itens com compromissos: ${itemsError.message}`)
+  }
+
+  // Cancelar todos os financial_commitments relacionados às despesas
+  if (itemsWithCommitments && itemsWithCommitments.length > 0) {
+    const commitmentIds = itemsWithCommitments
+      .map(item => (item as any).financial_commitment_id)
+      .filter(Boolean) as string[]
+    
+    for (const commitmentId of commitmentIds) {
+      try {
+        await cancelCommitment(commitmentId)
+      } catch (commitmentError: any) {
+        // Log do erro, mas não falhar o cancelamento da nota
+        // Se o compromisso já foi cancelado ou não existe, continuar
+        const errorMessage = commitmentError?.message || String(commitmentError) || "Erro desconhecido"
+        if (!errorMessage.includes("não encontrado") && !errorMessage.includes("já cancelado")) {
+          // Apenas logar erros não esperados, mas não bloquear o cancelamento da nota
+        }
+      }
+    }
+  }
+
   // Atualizar status para cancelled
   const { data: cancelledNote, error: updateError } = await supabase
     .from("debit_notes")
@@ -792,14 +957,14 @@ export async function cancelDebitNote(debitNoteId: string): Promise<DebitNoteWit
     throw new Error(`Erro ao cancelar nota de débito: ${updateError.message}`)
   }
   
-  // Buscar items
-  const { data: items, error: itemsError } = await supabase
+  // Buscar todos os itens atualizados
+  const { data: items, error: allItemsError } = await supabase
     .from("debit_note_items")
     .select("*")
     .eq("debit_note_id", debitNoteId)
   
-  if (itemsError) {
-    throw new Error(`Erro ao buscar itens: ${itemsError.message}`)
+  if (allItemsError) {
+    throw new Error(`Erro ao buscar itens: ${allItemsError.message}`)
   }
   
   return {
@@ -841,6 +1006,48 @@ export async function deleteDebitNote(debitNoteId: string): Promise<void> {
   // Verificar se já está deletada
   if (currentNote.deleted_at) {
     console.log("[deleteDebitNote] Nota já está deletada (soft delete), fazendo hard delete...")
+  }
+
+  // Buscar itens com financial_commitment_id (despesas provisionadas)
+  const { data: itemsWithCommitments, error: itemsError } = await supabase
+    .from("debit_note_items")
+    .select("id, financial_commitment_id")
+    .eq("debit_note_id", debitNoteId)
+    .eq("workspace_id", workspace.id)
+    .not("financial_commitment_id", "is", null)
+  
+  if (itemsError) {
+    throw new Error(`Erro ao buscar itens com compromissos: ${itemsError.message}`)
+  }
+
+  // Deletar todos os financial_commitments relacionados às despesas
+  // (financial_schedules serão deletados em cascata devido ao ON DELETE CASCADE)
+  if (itemsWithCommitments && itemsWithCommitments.length > 0) {
+    const commitmentIds = itemsWithCommitments
+      .map(item => (item as any).financial_commitment_id)
+      .filter(Boolean) as string[]
+    
+    for (const commitmentId of commitmentIds) {
+      try {
+        // Deletar financial_schedules primeiro (cascata do commitment)
+        await supabase
+          .from("financial_schedules")
+          .delete()
+          .eq("commitment_id", commitmentId)
+          .eq("workspace_id", workspace.id)
+        
+        // Deletar financial_commitment
+        await supabase
+          .from("financial_commitments")
+          .delete()
+          .eq("id", commitmentId)
+          .eq("workspace_id", workspace.id)
+      } catch (commitmentError: any) {
+        // Log do erro, mas não falhar a deleção da nota
+        const errorMessage = commitmentError?.message || String(commitmentError) || "Erro desconhecido"
+        console.error(`[deleteDebitNote] Erro ao deletar compromisso ${commitmentId}:`, errorMessage)
+      }
+    }
   }
   
   // Fazer hard delete (deleção física permanente)
