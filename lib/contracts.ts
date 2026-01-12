@@ -401,9 +401,7 @@ export async function updateContract(contractId: string, changes: UpdateContract
   
   if (needsScheduleRecalculation) {
     try {
-      console.log(`[contracts:update] Recalculando schedules do contrato ${contractId}`)
       await recalculateContractSchedules(contractId)
-      console.log(`[contracts:update] Schedules recalculados com sucesso`)
     } catch (scheduleError: any) {
       console.error(`[contracts:update] Erro ao recalcular schedules:`, scheduleError?.message || scheduleError)
       // Não falhar a atualização do contrato se o recálculo de schedules falhar
