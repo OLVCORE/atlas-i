@@ -31,7 +31,7 @@ type DebitNotesTableClientProps = {
   entities: Array<{ id: string; legal_name: string }>
   onUpdateAction?: (prevState: any, formData: FormData) => Promise<{ ok: boolean; error?: string; message?: string }>
   onCancelAction?: (debitNoteId: string) => Promise<void>
-  onDeleteAction?: (debitNoteId: string) => Promise<void>
+  onDeleteAction?: (debitNoteId: string) => Promise<{ success: boolean; error?: string }>
 }
 
 export function DebitNotesTableClient({
