@@ -23,8 +23,15 @@ function loadPuppeteer() {
       puppeteer = require("puppeteer-core")
       console.log("[PDF] Usando @sparticuz/chromium + puppeteer-core")
       
-      // Configurar chromium para Vercel
-      chromium.setGraphicsMode(false)
+      // Configurar chromium para Vercel (desabilitar modo gráfico para reduzir tamanho)
+      if (chromium.setGraphicsMode) {
+        chromium.setGraphicsMode(false)
+      }
+      
+      // Configurar path do executável para Vercel
+      if (chromium.font) {
+        chromium.font("/var/task/.fonts")
+      }
     } catch (error1: any) {
       console.log("[PDF] Fallback: tentando @sparticuz/chromium-min...")
       // Fallback: @sparticuz/chromium-min
