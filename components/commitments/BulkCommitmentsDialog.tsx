@@ -51,6 +51,7 @@ export function BulkCommitmentsDialog({
   const [pasteText, setPasteText] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
 
   const categories = getCategoriesByType(type)
 
@@ -196,15 +197,29 @@ export function BulkCommitmentsDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Adicionar Compromissos em Massa</DialogTitle>
-            <DialogDescription>
-              Adicione múltiplos compromissos de uma vez. Cole a lista de despesas/receitas ou adicione manualmente.
-            </DialogDescription>
+        <DialogContent className={isFullscreen ? "sm:max-w-[95vw] sm:h-[95vh] max-h-[95vh] overflow-hidden flex flex-col" : "sm:max-w-[900px] max-h-[90vh] overflow-y-auto"}>
+          <DialogHeader className="flex-shrink-0">
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <DialogTitle>Adicionar Compromissos em Massa</DialogTitle>
+                <DialogDescription>
+                  Adicione múltiplos compromissos de uma vez. Cole a lista de despesas/receitas ou adicione manualmente.
+                </DialogDescription>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsFullscreen(!isFullscreen)}
+                className="ml-4"
+                title={isFullscreen ? "Minimizar" : "Expandir"}
+              >
+                {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              </Button>
+            </div>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className={`space-y-4 ${isFullscreen ? "flex-1 flex flex-col overflow-hidden" : ""}`}>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="bulkEntity">Entidade</Label>
@@ -256,8 +271,8 @@ export function BulkCommitmentsDialog({
               </Button>
             </div>
 
-            <div className="border rounded-lg overflow-hidden">
-              <div className="overflow-x-auto">
+            <div className={`border rounded-lg overflow-hidden ${isFullscreen ? "flex-1 flex flex-col min-h-0" : ""}`}>
+              <div className={`overflow-x-auto ${isFullscreen ? "flex-1 overflow-y-auto" : ""}`}>
                 <table className="w-full">
                   <thead className="bg-muted">
                     <tr>
@@ -357,12 +372,12 @@ export function BulkCommitmentsDialog({
             </div>
 
             {error && (
-              <div className="rounded-lg border border-destructive bg-destructive/10 p-3 text-sm text-destructive whitespace-pre-line">
+              <div className={`rounded-lg border border-destructive bg-destructive/10 p-3 text-sm text-destructive whitespace-pre-line ${isFullscreen ? "flex-shrink-0" : ""}`}>
                 {error}
               </div>
             )}
 
-            <DialogFooter>
+            <DialogFooter className={isFullscreen ? "flex-shrink-0" : ""}>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>
                 Cancelar
               </Button>
