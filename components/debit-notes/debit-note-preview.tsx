@@ -130,8 +130,12 @@ export default function DebitNotePreview({
 
         <div className="space-y-4 mb-8 text-gray-900 print:text-black">
           <div className="flex justify-between">
-            <span className="font-semibold">Cliente:</span>
+            <span className="font-semibold">Entidade:</span>
             <span>{entity.legal_name}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="font-semibold">Cliente:</span>
+            <span>{debitNote.client_name || entity.legal_name}</span>
           </div>
           <div className="flex justify-between">
             <span className="font-semibold">Documento:</span>

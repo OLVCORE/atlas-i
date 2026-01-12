@@ -429,8 +429,12 @@ function generateDebitNoteHTML(
 
     <div class="info-section">
       <div class="info-row">
-        <div class="info-label">Cliente:</div>
+        <div class="info-label">Entidade:</div>
         <div class="info-value">${entity.legal_name}</div>
+      </div>
+      <div class="info-row">
+        <div class="info-label">Cliente:</div>
+        <div class="info-value">${debitNote.client_name || entity.legal_name}</div>
       </div>
       <div class="info-row">
         <div class="info-label">Documento:</div>
