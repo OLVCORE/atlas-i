@@ -56,7 +56,12 @@ export function DebitNoteEditDialog({
         .map((item: any) => ({ id: item.id, description: item.description || "", amount: item.amount }))
       const discountsItems: LineItem[] = customItems
         .filter((item: any) => item.type === 'discount')
-        .map((item: any) => ({ id: item.id, description: item.description || "", amount: Math.abs(item.amount) }))
+        .map((item: any) => ({ 
+          id: item.id, 
+          description: item.description || "", 
+          // Descontos são sempre salvos como positivos no banco, manter positivo na UI
+          amount: Math.abs(item.amount) 
+        }))
       
       setExpenses(expensesItems)
       setDiscounts(discountsItems)

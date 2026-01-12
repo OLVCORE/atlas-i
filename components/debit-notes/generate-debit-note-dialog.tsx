@@ -90,8 +90,9 @@ export function GenerateDebitNoteDialog({ contracts }: GenerateDebitNoteDialogPr
     .filter((s) => selectedScheduleIds.has(s.id))
     .reduce((sum, s) => sum + Number(s.amount), 0)
   
-  const expensesAmount = expenses.reduce((sum, e) => sum + (e.amount || 0), 0)
-  const discountsAmount = discounts.reduce((sum, d) => sum + (d.amount || 0), 0)
+  const expensesAmount = expenses.reduce((sum, e) => sum + Math.abs(e.amount || 0), 0)
+  // Descontos: sempre usar valor absoluto (positivo) e subtrair
+  const discountsAmount = discounts.reduce((sum, d) => sum + Math.abs(d.amount || 0), 0)
   
   const totalAmount = schedulesAmount + expensesAmount - discountsAmount
 

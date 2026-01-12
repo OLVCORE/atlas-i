@@ -48,7 +48,6 @@ export default function DebitNotePreview({
         window.URL.revokeObjectURL(url)
         document.body.removeChild(a)
       } else {
-        // Se a geração de PDF falhar, usar impressão como fallback
         alert("Geração automática de PDF não disponível. Use a opção de Imprimir para salvar como PDF.")
         window.print()
       }
@@ -77,11 +76,12 @@ export default function DebitNotePreview({
     0
   )
   const expensesSubtotal = expenseItems.reduce(
-    (sum, item) => sum + Number(item.amount),
+    (sum, item) => sum + Math.abs(Number(item.amount)),
     0
   )
+  // Descontos são sempre valores positivos no banco, mas devem ser subtraídos
   const discountsSubtotal = discountItems.reduce(
-    (sum, item) => sum + Number(item.amount),
+    (sum, item) => sum + Math.abs(Number(item.amount)),
     0
   )
 
@@ -121,53 +121,51 @@ export default function DebitNotePreview({
         </div>
       </div>
 
-      {/* Conteúdo da nota (aparece na impressão) */}
-      <div ref={printRef} className="max-w-4xl mx-auto bg-white dark:bg-white p-8 print:p-4 print:bg-white">
-        <div className="border-b-2 border-gray-800 pb-6 mb-8">
-          <h1 className="text-3xl font-bold mb-2 text-gray-900 print:text-black">NOTA DE DÉBITO</h1>
-          <div className="text-sm text-gray-600 print:text-gray-700">Número: {debitNote.number}</div>
+      {/* Conteúdo da nota (aparece na impressão) - Design Profissional e Compacto */}
+      <div ref={printRef} className="max-w-4xl mx-auto bg-white dark:bg-white p-6 print:p-3 print:bg-white print:text-xs">
+        {/* Cabeçalho Compacto */}
+        <div className="border-b-2 border-gray-900 pb-3 mb-4 print:pb-2 print:mb-2">
+          <div className="flex justify-between items-start mb-1">
+            <div>
+              <h1 className="text-2xl print:text-xl font-bold text-gray-900 print:text-black mb-0.5">NOTA DE DÉBITO</h1>
+              <div className="text-xs print:text-[10px] text-gray-600 print:text-gray-700 font-medium">Número: {debitNote.number}</div>
+            </div>
+            <div className="text-right text-xs print:text-[10px] text-gray-600 print:text-gray-700">
+              <div>Data de Emissão: {formatDate(debitNote.issued_date)}</div>
+              <div>Vencimento: {formatDate(debitNote.due_date)}</div>
+            </div>
+          </div>
         </div>
 
-        <div className="space-y-4 mb-8 text-gray-900 print:text-black">
-          <div className="flex justify-between">
-            <span className="font-semibold">Entidade:</span>
-            <span>{entity.legal_name}</span>
+        {/* Informações do Cliente - Layout Compacto em 2 Colunas */}
+        <div className="grid grid-cols-2 gap-x-6 gap-y-1 mb-4 print:mb-3 text-xs print:text-[10px] text-gray-900 print:text-black">
+          <div>
+            <span className="font-semibold">Entidade:</span> {entity.legal_name}
           </div>
-          <div className="flex justify-between">
-            <span className="font-semibold">Cliente:</span>
-            <span>{debitNote.client_name || entity.legal_name}</span>
+          <div>
+            <span className="font-semibold">Documento:</span> {entity.document}
           </div>
-          <div className="flex justify-between">
-            <span className="font-semibold">Documento:</span>
-            <span>{entity.document}</span>
+          <div className="col-span-2">
+            <span className="font-semibold">Cliente:</span> {debitNote.client_name || entity.legal_name}
           </div>
-          <div className="flex justify-between">
-            <span className="font-semibold">Contrato:</span>
-            <span>{contract.title}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="font-semibold">Data de Emissão:</span>
-            <span>{formatDate(debitNote.issued_date)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="font-semibold">Data de Vencimento:</span>
-            <span>{formatDate(debitNote.due_date)}</span>
+          <div className="col-span-2">
+            <span className="font-semibold">Contrato:</span> {contract.title}
           </div>
           {debitNote.description && (
-            <div className="flex justify-between">
-              <span className="font-semibold">Descrição:</span>
-              <span>{debitNote.description}</span>
+            <div className="col-span-2">
+              <span className="font-semibold">Descrição:</span> {debitNote.description}
             </div>
           )}
         </div>
 
-        <table className="w-full border-collapse mb-6 text-gray-900 print:text-black">
+        {/* Tabela de Itens - Design Profissional e Compacto */}
+        <table className="w-full border-collapse mb-4 print:mb-2 text-xs print:text-[10px] text-gray-900 print:text-black">
           <thead>
-            <tr className="bg-gray-100 print:bg-gray-100">
-              <th className="border-b-2 border-gray-800 p-3 text-left font-bold text-gray-900 print:text-black">
+            <tr className="bg-gray-100 print:bg-gray-100 border-b-2 border-gray-900">
+              <th className="p-2 print:p-1 text-left font-bold text-gray-900 print:text-black border-r border-gray-300">
                 Descrição
               </th>
-              <th className="border-b-2 border-gray-800 p-3 text-right font-bold text-gray-900 print:text-black">
+              <th className="p-2 print:p-1 text-right font-bold text-gray-900 print:text-black w-24">
                 Valor
               </th>
             </tr>
@@ -176,24 +174,26 @@ export default function DebitNotePreview({
             {/* Itens dos schedules */}
             {scheduleItems.length > 0 && scheduleItems.map((item: any, index: number) => (
               <tr key={`schedule-${index}`} className="border-b border-gray-200 print:border-gray-300">
-                <td className="p-3 text-gray-900 print:text-black">{item.description || "-"}</td>
-                <td className="p-3 text-right text-gray-900 print:text-black">{formatCurrency(item.amount)}</td>
+                <td className="p-2 print:p-1 text-gray-900 print:text-black border-r border-gray-200">{item.description || "-"}</td>
+                <td className="p-2 print:p-1 text-right text-gray-900 print:text-black font-medium">{formatCurrency(item.amount)}</td>
               </tr>
             ))}
 
             {/* Despesas adicionais */}
             {expenseItems.length > 0 && expenseItems.map((item: any, index: number) => (
               <tr key={`expense-${index}`} className="border-b border-gray-200 print:border-gray-300">
-                <td className="p-3 text-gray-900 print:text-black">{item.description || "Despesa adicional"}</td>
-                <td className="p-3 text-right text-gray-900 print:text-black">{formatCurrency(item.amount)}</td>
+                <td className="p-2 print:p-1 text-gray-900 print:text-black border-r border-gray-200">{item.description || "Despesa adicional"}</td>
+                <td className="p-2 print:p-1 text-right text-gray-900 print:text-black font-medium">{formatCurrency(item.amount)}</td>
               </tr>
             ))}
 
             {/* Descontos */}
             {discountItems.length > 0 && discountItems.map((item: any, index: number) => (
               <tr key={`discount-${index}`} className="border-b border-gray-200 print:border-gray-300">
-                <td className="p-3 text-gray-900 print:text-black">{item.description || "Desconto"}</td>
-                <td className="p-3 text-right text-gray-900 print:text-black">{formatCurrency(-item.amount)}</td>
+                <td className="p-2 print:p-1 text-gray-900 print:text-black border-r border-gray-200">{item.description || "Desconto"}</td>
+                <td className="p-2 print:p-1 text-right text-gray-900 print:text-black font-medium text-red-600 print:text-red-700">
+                  {formatCurrency(-item.amount)}
+                </td>
               </tr>
             ))}
 
@@ -201,27 +201,21 @@ export default function DebitNotePreview({
             {(expenseItems.length > 0 || discountItems.length > 0) && (
               <>
                 {scheduleItems.length > 0 && (
-                  <tr className="bg-gray-50 print:bg-gray-50">
-                    <td className="p-3 font-semibold border-t border-gray-300 text-gray-900 print:text-black">
-                      Subtotal (Schedules)
-                    </td>
-                    <td className="p-3 text-right font-semibold border-t border-gray-300 text-gray-900 print:text-black">
-                      {formatCurrency(schedulesSubtotal)}
-                    </td>
+                  <tr className="bg-gray-50 print:bg-gray-50 border-t border-gray-400">
+                    <td className="p-2 print:p-1 font-semibold text-gray-900 print:text-black border-r border-gray-200">Subtotal (Schedules)</td>
+                    <td className="p-2 print:p-1 text-right font-semibold text-gray-900 print:text-black">{formatCurrency(schedulesSubtotal)}</td>
                   </tr>
                 )}
                 {expenseItems.length > 0 && (
                   <tr className="bg-gray-50 print:bg-gray-50">
-                    <td className="p-3 font-semibold text-gray-900 print:text-black">Subtotal (Despesas)</td>
-                    <td className="p-3 text-right font-semibold text-gray-900 print:text-black">
-                      {formatCurrency(expensesSubtotal)}
-                    </td>
+                    <td className="p-2 print:p-1 font-semibold text-gray-900 print:text-black border-r border-gray-200">Subtotal (Despesas)</td>
+                    <td className="p-2 print:p-1 text-right font-semibold text-gray-900 print:text-black">{formatCurrency(expensesSubtotal)}</td>
                   </tr>
                 )}
                 {discountItems.length > 0 && (
                   <tr className="bg-gray-50 print:bg-gray-50">
-                    <td className="p-3 font-semibold text-gray-900 print:text-black">Subtotal (Descontos)</td>
-                    <td className="p-3 text-right font-semibold text-gray-900 print:text-black">
+                    <td className="p-2 print:p-1 font-semibold text-gray-900 print:text-black border-r border-gray-200">Subtotal (Descontos)</td>
+                    <td className="p-2 print:p-1 text-right font-semibold text-gray-900 print:text-black text-red-600 print:text-red-700">
                       {formatCurrency(-discountsSubtotal)}
                     </td>
                   </tr>
@@ -230,9 +224,9 @@ export default function DebitNotePreview({
             )}
 
             {/* Total */}
-            <tr className="bg-gray-200 print:bg-gray-200 font-bold text-lg">
-              <td className="p-4 border-t-2 border-gray-800 text-gray-900 print:text-black">TOTAL</td>
-              <td className="p-4 text-right border-t-2 border-gray-800 text-gray-900 print:text-black">
+            <tr className="bg-gray-200 print:bg-gray-200 font-bold border-t-2 border-gray-900">
+              <td className="p-2 print:p-1 text-gray-900 print:text-black border-r border-gray-300">TOTAL</td>
+              <td className="p-2 print:p-1 text-right text-gray-900 print:text-black text-lg print:text-base">
                 {formatCurrency(debitNote.total_amount)}
               </td>
             </tr>
@@ -241,27 +235,26 @@ export default function DebitNotePreview({
 
         {/* Observações */}
         {debitNote.notes && (
-          <div className="mt-8 pt-6 border-t border-gray-300">
-            <h3 className="font-semibold mb-2 text-gray-900 print:text-black">Observações:</h3>
-            <div className="text-sm text-gray-700 print:text-black whitespace-pre-line">
+          <div className="mt-3 print:mt-2 pt-2 print:pt-1 border-t border-gray-300">
+            <h3 className="font-semibold mb-1 print:mb-0.5 text-xs print:text-[10px] text-gray-900 print:text-black">Observações:</h3>
+            <div className="text-xs print:text-[10px] text-gray-700 print:text-black whitespace-pre-line leading-tight">
               {debitNote.notes}
             </div>
           </div>
         )}
 
-        <div className="mt-8 pt-6 border-t border-gray-300 text-xs text-gray-600 print:text-gray-700 text-center">
+        {/* Rodapé Compacto */}
+        <div className="mt-4 print:mt-2 pt-2 print:pt-1 border-t border-gray-300 text-[10px] print:text-[9px] text-gray-600 print:text-gray-700 text-center">
           <p>Esta nota de débito foi gerada automaticamente pelo sistema ATLAS-i</p>
-          <p className="mt-1">
-            Data de geração: {new Date().toLocaleString("pt-BR")}
-          </p>
+          <p className="mt-0.5">Data de geração: {new Date().toLocaleString("pt-BR")}</p>
         </div>
       </div>
 
-      {/* Estilos para impressão */}
+      {/* Estilos para impressão otimizada - Uma única página */}
       <style jsx global>{`
         @media print {
           @page {
-            margin: 20mm 15mm;
+            margin: 8mm 6mm;
             size: A4;
           }
           
@@ -274,14 +267,15 @@ export default function DebitNotePreview({
           body {
             background: white !important;
             color: black !important;
+            font-size: 10px !important;
           }
           
           .print\\:hidden {
             display: none !important;
           }
           
-          .print\\:p-4 {
-            padding: 1rem;
+          .print\\:p-3 {
+            padding: 0.75rem !important;
           }
           
           .print\\:bg-white {
@@ -292,10 +286,23 @@ export default function DebitNotePreview({
             color: black !important;
           }
           
+          .print\\:text-\\[10px\\] {
+            font-size: 10px !important;
+          }
+          
+          .print\\:text-\\[9px\\] {
+            font-size: 9px !important;
+          }
+          
           /* Garantir que todos os itens apareçam na impressão */
           table tbody tr {
             page-break-inside: avoid;
             break-inside: avoid;
+          }
+          
+          /* Evitar quebra de página dentro da tabela */
+          table {
+            page-break-inside: avoid;
           }
           
           /* Garantir que cores de fundo apareçam */
@@ -308,8 +315,20 @@ export default function DebitNotePreview({
           /* Garantir bordas visíveis */
           .border-gray-200,
           .border-gray-300,
-          .border-gray-800 {
+          .border-gray-800,
+          .border-gray-900 {
             border-color: #374151 !important;
+          }
+          
+          /* Reduzir espaçamentos para caber em uma página */
+          .space-y-4 > * + * {
+            margin-top: 0.5rem !important;
+          }
+          
+          /* Compactar linhas da tabela */
+          table td, table th {
+            padding: 4px 6px !important;
+            line-height: 1.3 !important;
           }
         }
       `}</style>

@@ -264,8 +264,9 @@ function generateDebitNoteHTML(
   
   // Calcular subtotais
   const schedulesSubtotal = scheduleItems.reduce((sum, item) => sum + Number(item.amount), 0)
-  const expensesSubtotal = expenseItems.reduce((sum, item) => sum + Number(item.amount), 0)
-  const discountsSubtotal = discountItems.reduce((sum, item) => sum + Number(item.amount), 0)
+  const expensesSubtotal = expenseItems.reduce((sum, item) => sum + Math.abs(Number(item.amount)), 0)
+  // Descontos são sempre valores positivos no banco, mas devem ser subtraídos
+  const discountsSubtotal = discountItems.reduce((sum, item) => sum + Math.abs(Number(item.amount)), 0)
   
   // Gerar HTML dos itens
   let itemsHTML = ""
@@ -292,12 +293,15 @@ function generateDebitNoteHTML(
   
   // Descontos
   if (discountItems.length > 0) {
-    itemsHTML += discountItems.map((item: any) => `
+    itemsHTML += discountItems.map((item: any) => {
+      const amount = Math.abs(Number(item.amount))
+      return `
       <tr>
         <td style="padding: 8px; border-bottom: 1px solid #ddd;">${item.description || "Desconto"}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">${formatCurrency(-item.amount)}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right; color: #dc2626;">${formatCurrency(-amount)}</td>
       </tr>
-    `).join("")
+    `
+    }).join("")
   }
   
   // Subtotais

@@ -163,8 +163,9 @@ export async function createDebitNote(input: CreateDebitNoteInput): Promise<Debi
   
   // Calcular valor total (schedules + expenses - discounts)
   const schedulesAmount = schedules.reduce((sum, s) => sum + Number(s.amount), 0)
-  const expensesAmount = (input.expenses || []).reduce((sum, e) => sum + (e.amount || 0), 0)
-  const discountsAmount = (input.discounts || []).reduce((sum, d) => sum + (d.amount || 0), 0)
+  const expensesAmount = (input.expenses || []).reduce((sum, e) => sum + Math.abs(e.amount || 0), 0)
+  // Descontos: sempre usar valor absoluto (positivo) e subtrair
+  const discountsAmount = (input.discounts || []).reduce((sum, d) => sum + Math.abs(d.amount || 0), 0)
   const totalAmount = schedulesAmount + expensesAmount - discountsAmount
   validateAmount(totalAmount)
   
@@ -233,7 +234,8 @@ export async function createDebitNote(input: CreateDebitNoteInput): Promise<Debi
     workspace_id: workspace.id,
     debit_note_id: debitNote.id,
     contract_schedule_id: null,
-    amount: discount.amount,
+    // Sempre salvar desconto como valor positivo (será subtraído no cálculo)
+    amount: Math.abs(discount.amount || 0),
     currency: 'BRL',
     description: discount.description || null,
     type: 'discount',
@@ -587,8 +589,9 @@ export async function updateDebitNote(
   const schedulesAmount = scheduleItems.reduce((sum, item) => sum + Number(item.amount), 0)
   
   // Calcular valor total dos expenses e discounts
-  const expensesAmount = (input.expenses || []).reduce((sum, e) => sum + (e.amount || 0), 0)
-  const discountsAmount = (input.discounts || []).reduce((sum, d) => sum + (d.amount || 0), 0)
+  const expensesAmount = (input.expenses || []).reduce((sum, e) => sum + Math.abs(e.amount || 0), 0)
+  // Descontos: sempre usar valor absoluto (positivo) e subtrair
+  const discountsAmount = (input.discounts || []).reduce((sum, d) => sum + Math.abs(d.amount || 0), 0)
   
   // Total = schedules + expenses - discounts
   const totalAmount = schedulesAmount + expensesAmount - discountsAmount
@@ -658,7 +661,7 @@ export async function updateDebitNote(
     workspace_id: workspace.id,
     debit_note_id: debitNoteId,
     contract_schedule_id: null,
-    amount: expense.amount,
+    amount: Math.abs(expense.amount || 0),
     currency: 'BRL',
     description: expense.description || null,
     type: 'expense',
@@ -669,7 +672,8 @@ export async function updateDebitNote(
     workspace_id: workspace.id,
     debit_note_id: debitNoteId,
     contract_schedule_id: null,
-    amount: discount.amount,
+    // Sempre salvar desconto como valor positivo (será subtraído no cálculo)
+    amount: Math.abs(discount.amount || 0),
     currency: 'BRL',
     description: discount.description || null,
     type: 'discount',
