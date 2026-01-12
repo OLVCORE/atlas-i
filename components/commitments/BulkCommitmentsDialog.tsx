@@ -31,7 +31,7 @@ type BulkCommitmentsDialogProps = {
   entityId: string
   type: "expense" | "revenue"
   entities: Array<{ id: string; legal_name: string }>
-  onCreateAction: (formData: FormData) => Promise<{ ok: boolean; error?: string; message?: string }>
+  onCreateAction: (prevState: any, formData: FormData) => Promise<{ ok: boolean; error?: string; message?: string }>
 }
 
 export function BulkCommitmentsDialog({
@@ -165,7 +165,7 @@ export function BulkCommitmentsDialog({
           formData.append("end_date", item.endDate || "")
           formData.append("recurrence", item.recurrence)
 
-          const result = await onCreateAction(formData)
+          const result = await onCreateAction(null, formData)
           
           if (result.ok) {
             successCount++

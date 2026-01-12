@@ -7,7 +7,7 @@ import { Plus } from "lucide-react"
 
 type BulkCommitmentsDialogClientProps = {
   entities: Array<{ id: string; legal_name: string }>
-  onCreateAction: (formData: FormData) => Promise<{ ok: boolean; error?: string; message?: string }>
+  onCreateAction: (prevState: any, formData: FormData) => Promise<{ ok: boolean; error?: string; message?: string }>
 }
 
 export function BulkCommitmentsDialogClient({
