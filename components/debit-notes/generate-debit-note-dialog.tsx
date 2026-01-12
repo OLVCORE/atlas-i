@@ -187,119 +187,123 @@ export function GenerateDebitNoteDialog({ contracts }: GenerateDebitNoteDialogPr
           </div>
         </AlertDialogHeader>
 
-        <div className={`space-y-4 ${isFullscreen ? "flex-1 flex flex-col overflow-hidden" : ""}`}>
-          {/* Seleção de Contrato */}
-          <div className="space-y-2">
-            <Label htmlFor="contract">Contrato *</Label>
-            <Select value={selectedContractId} onValueChange={setSelectedContractId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione um contrato" />
-              </SelectTrigger>
-              <SelectContent>
-                {contracts.map((contract) => (
-                  <SelectItem key={contract.id} value={contract.id}>
-                    {contract.title}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Lista de Schedules */}
-          {selectedContractId && (
+        <div className={`${isFullscreen ? "flex-1 flex flex-col overflow-hidden" : "space-y-4"}`}>
+          <div className={`${isFullscreen ? "flex-shrink-0 space-y-4" : "space-y-4"}`}>
+            {/* Seleção de Contrato */}
             <div className="space-y-2">
-              <Label>Schedules Disponíveis *</Label>
-              {isLoadingSchedules ? (
-                <div className="text-sm text-muted-foreground">Carregando schedules...</div>
-              ) : availableSchedules.length === 0 ? (
-                <div className="text-sm text-muted-foreground">
-                  Nenhum schedule disponível para este contrato
-                </div>
-              ) : (
-                <div className={`border rounded-md ${isFullscreen ? "flex-1 overflow-y-auto" : "max-h-[300px] overflow-y-auto"}`}>
-                  <table className="w-full text-sm">
-                    <thead className="bg-muted sticky top-0">
-                      <tr>
-                        <th className="p-2 text-left">
-                          <input
-                            type="checkbox"
-                            checked={
-                              availableSchedules.length > 0 &&
-                              availableSchedules.every((s) => selectedScheduleIds.has(s.id))
-                            }
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedScheduleIds(new Set(availableSchedules.map((s) => s.id)))
-                              } else {
-                                setSelectedScheduleIds(new Set())
-                              }
-                            }}
-                            className="mr-2"
-                          />
-                          Selecionar
-                        </th>
-                        <th className="p-2 text-left">Vencimento</th>
-                        <th className="p-2 text-right">Valor</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {availableSchedules.map((schedule) => (
-                        <tr key={schedule.id} className="border-t">
-                          <td className="p-2">
+              <Label htmlFor="contract">Contrato *</Label>
+              <Select value={selectedContractId} onValueChange={setSelectedContractId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione um contrato" />
+                </SelectTrigger>
+                <SelectContent>
+                  {contracts.map((contract) => (
+                    <SelectItem key={contract.id} value={contract.id}>
+                      {contract.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Lista de Schedules */}
+            {selectedContractId && (
+              <div className="space-y-2">
+                <Label>Schedules Disponíveis *</Label>
+                {isLoadingSchedules ? (
+                  <div className="text-sm text-muted-foreground">Carregando schedules...</div>
+                ) : availableSchedules.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">
+                    Nenhum schedule disponível para este contrato
+                  </div>
+                ) : (
+                  <div className={`border rounded-md ${isFullscreen ? "max-h-[200px] overflow-y-auto" : "max-h-[300px] overflow-y-auto"}`}>
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted sticky top-0">
+                        <tr>
+                          <th className="p-2 text-left">
                             <input
                               type="checkbox"
-                              checked={selectedScheduleIds.has(schedule.id)}
-                              onChange={() => handleScheduleToggle(schedule.id)}
+                              checked={
+                                availableSchedules.length > 0 &&
+                                availableSchedules.every((s) => selectedScheduleIds.has(s.id))
+                              }
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedScheduleIds(new Set(availableSchedules.map((s) => s.id)))
+                                } else {
+                                  setSelectedScheduleIds(new Set())
+                                }
+                              }}
                               className="mr-2"
                             />
-                          </td>
-                          <td className="p-2">{formatDate(schedule.due_date)}</td>
-                          <td className="p-2 text-right">
-                            {formatCurrency(Number(schedule.amount))}
-                          </td>
+                            Selecionar
+                          </th>
+                          <th className="p-2 text-left">Vencimento</th>
+                          <th className="p-2 text-right">Valor</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Total */}
-          {selectedScheduleIds.size > 0 && (
-            <div className="bg-muted p-3 rounded-md">
-              <div className="flex justify-between items-center">
-                <span className="font-medium">Total:</span>
-                <span className="text-lg font-bold">{formatCurrency(totalAmount)}</span>
+                      </thead>
+                      <tbody>
+                        {availableSchedules.map((schedule) => (
+                          <tr key={schedule.id} className="border-t">
+                            <td className="p-2">
+                              <input
+                                type="checkbox"
+                                checked={selectedScheduleIds.has(schedule.id)}
+                                onChange={() => handleScheduleToggle(schedule.id)}
+                                className="mr-2"
+                              />
+                            </td>
+                            <td className="p-2">{formatDate(schedule.due_date)}</td>
+                            <td className="p-2 text-right">
+                              {formatCurrency(Number(schedule.amount))}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Descrição */}
-          <div className="space-y-2">
-            <Label htmlFor="description">Descrição (opcional)</Label>
-            <Input
-              id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Ex: Fatura mensal - jan/2025"
-            />
+            {/* Total */}
+            {selectedScheduleIds.size > 0 && (
+              <div className="bg-muted p-3 rounded-md">
+                <div className="flex justify-between items-center">
+                  <span className="font-medium">Total:</span>
+                  <span className="text-lg font-bold">{formatCurrency(totalAmount)}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Descrição */}
+            <div className="space-y-2">
+              <Label htmlFor="description">Descrição (opcional)</Label>
+              <Input
+                id="description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Ex: Fatura mensal - jan/2025"
+              />
+            </div>
           </div>
 
           {/* Line Items Editor */}
           <div className={`border-t pt-4 ${isFullscreen ? "flex-1 flex flex-col min-h-0 overflow-hidden" : ""}`}>
             <h3 className="text-lg font-semibold mb-4">Despesas e Descontos Adicionais</h3>
-            <LineItemsEditor
-              expenses={expenses}
-              discounts={discounts}
-              onExpensesChange={setExpenses}
-              onDiscountsChange={setDiscounts}
-            />
+            <div className={isFullscreen ? "flex-1 overflow-y-auto" : ""}>
+              <LineItemsEditor
+                expenses={expenses}
+                discounts={discounts}
+                onExpensesChange={setExpenses}
+                onDiscountsChange={setDiscounts}
+              />
+            </div>
           </div>
 
           {/* Erro */}
-          {error && <div className="text-sm text-destructive">{error}</div>}
+          {error && <div className={`text-sm text-destructive ${isFullscreen ? "flex-shrink-0 mt-4" : ""}`}>{error}</div>}
         </div>
 
         <AlertDialogFooter className={isFullscreen ? "flex-shrink-0" : ""}>
