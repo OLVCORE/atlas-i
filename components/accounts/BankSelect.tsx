@@ -17,9 +17,9 @@ type BankSelectProps = {
 
 export function BankSelect({ name, defaultValue, value, onChange, className }: BankSelectProps) {
   const initialBank = value 
-    ? BRAZILIAN_BANKS.find(b => b.code === value)
+    ? (BRAZILIAN_BANKS.find(b => b.code === value) || null)
     : defaultValue 
-      ? BRAZILIAN_BANKS.find(b => b.code === defaultValue)
+      ? (BRAZILIAN_BANKS.find(b => b.code === defaultValue) || null)
       : null
   
   const [selectedBank, setSelectedBank] = useState<Bank | null>(initialBank)
