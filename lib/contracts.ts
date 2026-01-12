@@ -215,6 +215,9 @@ export async function updateContract(contractId: string, changes: UpdateContract
   const supabase = await createClient()
   const workspace = await getActiveWorkspace()
   
+  console.log(`[contracts:update] Iniciando atualização do contrato ${contractId}`)
+  console.log(`[contracts:update] Mudanças recebidas:`, JSON.stringify(changes, null, 2))
+  
   // Buscar contrato atual
   const { data: current, error: fetchError } = await supabase
     .from("contracts")
@@ -227,6 +230,15 @@ export async function updateContract(contractId: string, changes: UpdateContract
   if (fetchError || !current) {
     throw new Error("Contrato não encontrado")
   }
+  
+  console.log(`[contracts:update] Contrato atual:`, {
+    value_type: current.value_type,
+    monthly_value: current.monthly_value,
+    total_value: current.total_value,
+    start_date: current.start_date,
+    end_date: current.end_date,
+    recurrence_period: current.recurrence_period
+  })
 
   // Validar se pode editar
   if (!canEditContract(current.status)) {
