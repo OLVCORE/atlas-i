@@ -42,6 +42,7 @@ export function GenerateDebitNoteDialog({ contracts }: GenerateDebitNoteDialogPr
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingSchedules, setIsLoadingSchedules] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
 
   // Buscar schedules quando contrato for selecionado
   useEffect(() => {
