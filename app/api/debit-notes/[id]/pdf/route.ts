@@ -162,7 +162,15 @@ export async function GET(
       },
     })
   } catch (error: any) {
-    console.error("[api/debit-notes/pdf] Erro completo:", error.message, error.stack)
+    const errorMessage = error?.message || "Erro desconhecido"
+    const errorStack = error?.stack || ""
+    
+    console.error("[api/debit-notes/pdf] Erro completo:", {
+      message: errorMessage,
+      stack: errorStack,
+      name: error?.name,
+      isVercel,
+    })
     
     // Garantir que o browser seja fechado em caso de erro
     if (browser) {
@@ -173,8 +181,20 @@ export async function GET(
       }
     }
     
+    // Retornar erro detalhado em desenvolvimento, genérico em produção
+    const detailedError = process.env.NODE_ENV === 'development' 
+      ? `${errorMessage}\n\nStack: ${errorStack}` 
+      : errorMessage
+    
     return NextResponse.json(
-      { error: error.message || "Erro ao gerar PDF" },
+      { 
+        error: detailedError,
+        details: process.env.NODE_ENV === 'development' ? {
+          stack: errorStack,
+          name: error?.name,
+          isVercel,
+        } : undefined
+      },
       { status: 500 }
     )
   }
