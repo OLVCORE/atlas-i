@@ -8,21 +8,31 @@ import { listEntities } from "@/lib/entities"
 // Detectar ambiente
 const isVercel = process.env.VERCEL === "1" || process.env.VERCEL_ENV
 
-// Carregar módulos dinamicamente
+// Carregar módulos dinamicamente com múltiplos fallbacks
 function loadPuppeteer() {
   let puppeteer: any
   let chromium: any
 
   if (isVercel) {
-    // Vercel: usar puppeteer-core com @sparticuz/chromium-min
-    console.log("[PDF] Ambiente Vercel detectado, usando puppeteer-core + chromium-min")
+    // Vercel: tentar múltiplas abordagens
+    console.log("[PDF] Ambiente Vercel detectado")
+    
+    // Tentativa 1: @sparticuz/chromium-min
     try {
       chromium = require("@sparticuz/chromium-min")
       puppeteer = require("puppeteer-core")
-      console.log("[PDF] Módulos carregados com sucesso")
-    } catch (error: any) {
-      console.error("[PDF] Erro ao carregar módulos Vercel:", error.message, error.stack)
-      throw new Error(`Erro ao carregar módulos: ${error.message}`)
+      console.log("[PDF] Usando @sparticuz/chromium-min + puppeteer-core")
+    } catch (error1: any) {
+      console.log("[PDF] Fallback 1 falhou, tentando @sparticuz/chromium...")
+      // Tentativa 2: @sparticuz/chromium (versão completa)
+      try {
+        chromium = require("@sparticuz/chromium")
+        puppeteer = require("puppeteer-core")
+        console.log("[PDF] Usando @sparticuz/chromium + puppeteer-core")
+      } catch (error2: any) {
+        console.error("[PDF] Erro ao carregar módulos Vercel:", error2.message)
+        throw new Error(`Erro ao carregar módulos: ${error2.message}`)
+      }
     }
   } else {
     // Local: usar puppeteer normal
@@ -43,7 +53,10 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  let browser: any = null
   try {
+    console.log("[PDF] Iniciando geração de PDF...")
+    
     const supabase = await createClient()
     const {
       data: { user },
@@ -56,6 +69,7 @@ export async function GET(
     const workspace = await getActiveWorkspace()
     const debitNoteId = params.id
 
+    console.log("[PDF] Buscando nota de débito:", debitNoteId)
     // Buscar nota de débito
     const debitNote = await getDebitNoteById(debitNoteId)
 
@@ -100,7 +114,6 @@ export async function GET(
     }
 
     console.log("[PDF] Iniciando browser...")
-    let browser
     try {
       browser = await puppeteer.launch(launchOptions)
       console.log("[PDF] Browser iniciado com sucesso")
@@ -129,6 +142,7 @@ export async function GET(
       })
       console.log("[PDF] PDF gerado com sucesso, tamanho:", pdfBuffer.length)
       await browser.close()
+      browser = null
     } catch (pdfError: any) {
       console.error("[PDF] Erro ao gerar PDF:", pdfError.message, pdfError.stack)
       if (browser) {
@@ -149,6 +163,16 @@ export async function GET(
     })
   } catch (error: any) {
     console.error("[api/debit-notes/pdf] Erro completo:", error.message, error.stack)
+    
+    // Garantir que o browser seja fechado em caso de erro
+    if (browser) {
+      try {
+        await browser.close()
+      } catch (closeError) {
+        console.error("[PDF] Erro ao fechar browser:", closeError)
+      }
+    }
+    
     return NextResponse.json(
       { error: error.message || "Erro ao gerar PDF" },
       { status: 500 }
