@@ -304,28 +304,23 @@ function generateDebitNoteHTML(
     }).join("")
   }
   
-  // Subtotais
+  // Subtotais conforme solicitado: Subtotal 1 (Schedules + Despesas) e Subtotal 2 (Descontos)
+  const subtotal1 = schedulesSubtotal + expensesSubtotal
   let subtotalsHTML = ""
   if (expenseItems.length > 0 || discountItems.length > 0) {
+    // Subtotal 1: Schedules + Despesas
     subtotalsHTML = `
       <tr class="subtotal-row">
-        <td style="padding: 8px; border-top: 1px solid #ddd; font-weight: bold;">Subtotal (Schedules)</td>
-        <td style="padding: 8px; border-top: 1px solid #ddd; text-align: right; font-weight: bold;">${formatCurrency(schedulesSubtotal)}</td>
+        <td style="padding: 8px; border-top: 2px solid #666; font-weight: bold;">Subtotal (Schedules + Despesas)</td>
+        <td style="padding: 8px; border-top: 2px solid #666; text-align: right; font-weight: bold;">${formatCurrency(subtotal1)}</td>
       </tr>
     `
-    if (expenseItems.length > 0) {
-      subtotalsHTML += `
-        <tr class="subtotal-row">
-          <td style="padding: 8px; font-weight: bold;">Subtotal (Despesas)</td>
-          <td style="padding: 8px; text-align: right; font-weight: bold;">${formatCurrency(expensesSubtotal)}</td>
-        </tr>
-      `
-    }
+    // Subtotal 2: Descontos/Créditos/Isenções
     if (discountItems.length > 0) {
       subtotalsHTML += `
         <tr class="subtotal-row">
-          <td style="padding: 8px; font-weight: bold;">Subtotal (Descontos)</td>
-          <td style="padding: 8px; text-align: right; font-weight: bold;">${formatCurrency(-discountsSubtotal)}</td>
+          <td style="padding: 8px; font-weight: bold;">Subtotal (Descontos / Créditos / Isenções)</td>
+          <td style="padding: 8px; text-align: right; font-weight: bold; color: #dc2626;">${formatCurrency(-discountsSubtotal)}</td>
         </tr>
       `
     }

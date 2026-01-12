@@ -41,8 +41,9 @@ async function updateDebitNoteAction(prevState: any, formData: FormData) {
     while (formData.has(`discount_${index}_amount`)) {
       const description = formData.get(`discount_${index}_description`) as string | null
       const amount = parseFloat(formData.get(`discount_${index}_amount`) as string)
-      if (!isNaN(amount) && amount > 0) {
-        discounts.push({ description: description || null, amount })
+      // Aceitar valores negativos ou positivos, converter para positivo (será subtraído no cálculo)
+      if (!isNaN(amount) && amount !== 0) {
+        discounts.push({ description: description || null, amount: Math.abs(amount) })
       }
       index++
     }

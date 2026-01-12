@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { LineItemsEditor, type LineItem } from "@/components/contracts/line-items-editor"
 import type { DebitNoteWithItems } from "@/lib/debit-notes"
+import { Eye } from "lucide-react"
 
 type DebitNoteEditDialogProps = {
   open: boolean
@@ -106,6 +107,11 @@ export function DebitNoteEditDialog({
     return null
   }
 
+  const handlePreview = () => {
+    // Abrir preview em nova aba
+    window.open(`/app/debit-notes/${debitNote.id}/preview`, '_blank')
+  }
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     
@@ -115,16 +121,19 @@ export function DebitNoteEditDialog({
     // Adicionar expenses e discounts ao FormData
     expenses.forEach((item, index) => {
       formData.append(`expense_${index}_description`, item.description)
-      formData.append(`expense_${index}_amount`, item.amount.toString())
+      formData.append(`expense_${index}_amount`, Math.abs(item.amount).toString())
     })
     discounts.forEach((item, index) => {
       formData.append(`discount_${index}_description`, item.description)
-      formData.append(`discount_${index}_amount`, item.amount.toString())
+      // Aceitar valores negativos ou positivos, converter para positivo
+      formData.append(`discount_${index}_amount`, Math.abs(item.amount).toString())
     })
     
     const result = await onUpdateAction(null, formData)
     if (result.ok) {
       handleSuccess()
+      // Recarregar a página para atualizar os dados
+      router.refresh()
     } else if (result.error) {
       alert(result.error)
     }
@@ -221,9 +230,18 @@ export function DebitNoteEditDialog({
             onDiscountsChange={setDiscounts}
           />
 
-          <DialogFooter>
+          <DialogFooter className="flex gap-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar
+            </Button>
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={handlePreview}
+              className="flex items-center gap-2"
+            >
+              <Eye className="h-4 w-4" />
+              Visualizar
             </Button>
             <Button type="submit" disabled={loadingItems}>
               {loadingItems ? "Carregando..." : "Salvar Alterações"}

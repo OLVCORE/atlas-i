@@ -197,24 +197,24 @@ export default function DebitNotePreview({
               </tr>
             ))}
 
-            {/* Subtotais */}
+            {/* Subtotais conforme solicitado */}
             {(expenseItems.length > 0 || discountItems.length > 0) && (
               <>
-                {scheduleItems.length > 0 && (
-                  <tr className="bg-gray-50 print:bg-gray-50 border-t border-gray-400">
-                    <td className="p-2 print:p-1 font-semibold text-gray-900 print:text-black border-r border-gray-200">Subtotal (Schedules)</td>
-                    <td className="p-2 print:p-1 text-right font-semibold text-gray-900 print:text-black">{formatCurrency(schedulesSubtotal)}</td>
-                  </tr>
-                )}
-                {expenseItems.length > 0 && (
-                  <tr className="bg-gray-50 print:bg-gray-50">
-                    <td className="p-2 print:p-1 font-semibold text-gray-900 print:text-black border-r border-gray-200">Subtotal (Despesas)</td>
-                    <td className="p-2 print:p-1 text-right font-semibold text-gray-900 print:text-black">{formatCurrency(expensesSubtotal)}</td>
-                  </tr>
-                )}
+                {/* Subtotal 1: Schedules + Despesas */}
+                <tr className="bg-gray-50 print:bg-gray-50 border-t-2 border-gray-400">
+                  <td className="p-2 print:p-1 font-semibold text-gray-900 print:text-black border-r border-gray-200">
+                    Subtotal (Schedules + Despesas)
+                  </td>
+                  <td className="p-2 print:p-1 text-right font-semibold text-gray-900 print:text-black">
+                    {formatCurrency(subtotal1)}
+                  </td>
+                </tr>
+                {/* Subtotal 2: Descontos/Créditos/Isenções */}
                 {discountItems.length > 0 && (
                   <tr className="bg-gray-50 print:bg-gray-50">
-                    <td className="p-2 print:p-1 font-semibold text-gray-900 print:text-black border-r border-gray-200">Subtotal (Descontos)</td>
+                    <td className="p-2 print:p-1 font-semibold text-gray-900 print:text-black border-r border-gray-200">
+                      Subtotal (Descontos / Créditos / Isenções)
+                    </td>
                     <td className="p-2 print:p-1 text-right font-semibold text-gray-900 print:text-black text-red-600 print:text-red-700">
                       {formatCurrency(-discountsSubtotal)}
                     </td>
