@@ -135,8 +135,11 @@ export async function createDebitNote(input: CreateDebitNoteInput): Promise<Debi
     throw new Error("Um ou mais schedules já possuem nota de débito")
   }
   
-  // Calcular valor total
-  const totalAmount = schedules.reduce((sum, s) => sum + Number(s.amount), 0)
+  // Calcular valor total (schedules + expenses - discounts)
+  const schedulesAmount = schedules.reduce((sum, s) => sum + Number(s.amount), 0)
+  const expensesAmount = (input.expenses || []).reduce((sum, e) => sum + (e.amount || 0), 0)
+  const discountsAmount = (input.discounts || []).reduce((sum, d) => sum + (d.amount || 0), 0)
+  const totalAmount = schedulesAmount + expensesAmount - discountsAmount
   validateAmount(totalAmount)
   
   // Determinar datas
@@ -175,15 +178,41 @@ export async function createDebitNote(input: CreateDebitNoteInput): Promise<Debi
     throw new Error(`Erro ao criar nota de débito: ${noteError.message}`)
   }
   
-  // Criar itens da nota
-  const itemsToInsert = schedules.map(schedule => ({
+  // Criar itens da nota (schedules + expenses + discounts)
+  const scheduleItems = schedules.map((schedule, index) => ({
     workspace_id: workspace.id,
     debit_note_id: debitNote.id,
     contract_schedule_id: schedule.id,
     amount: Number(schedule.amount),
     currency: 'BRL',
     description: schedule.due_date ? `Item - ${schedule.due_date}` : null,
+    type: null, // NULL = item do schedule
+    item_order: index,
   }))
+  
+  const expenseItems = (input.expenses || []).map((expense, index) => ({
+    workspace_id: workspace.id,
+    debit_note_id: debitNote.id,
+    contract_schedule_id: null,
+    amount: expense.amount,
+    currency: 'BRL',
+    description: expense.description || null,
+    type: 'expense',
+    item_order: scheduleItems.length + index,
+  }))
+  
+  const discountItems = (input.discounts || []).map((discount, index) => ({
+    workspace_id: workspace.id,
+    debit_note_id: debitNote.id,
+    contract_schedule_id: null,
+    amount: discount.amount,
+    currency: 'BRL',
+    description: discount.description || null,
+    type: 'discount',
+    item_order: scheduleItems.length + expenseItems.length + index,
+  }))
+  
+  const itemsToInsert = [...scheduleItems, ...expenseItems, ...discountItems]
   
   const { data: items, error: itemsError } = await supabase
     .from("debit_note_items")

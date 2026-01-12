@@ -99,16 +99,78 @@ function generateDebitNoteHTML(
     return new Date(dateStr + "T00:00:00").toLocaleDateString("pt-BR")
   }
 
-  const itemsHTML = debitNote.items
-    .map(
-      (item: any) => `
+  // Ordenar itens por item_order
+  const sortedItems = [...debitNote.items].sort((a: any, b: any) => (a.item_order || 0) - (b.item_order || 0))
+  
+  // Separar itens por tipo
+  const scheduleItems = sortedItems.filter((item: any) => item.contract_schedule_id !== null)
+  const expenseItems = sortedItems.filter((item: any) => item.type === 'expense')
+  const discountItems = sortedItems.filter((item: any) => item.type === 'discount')
+  
+  // Calcular subtotais
+  const schedulesSubtotal = scheduleItems.reduce((sum, item) => sum + Number(item.amount), 0)
+  const expensesSubtotal = expenseItems.reduce((sum, item) => sum + Number(item.amount), 0)
+  const discountsSubtotal = discountItems.reduce((sum, item) => sum + Number(item.amount), 0)
+  
+  // Gerar HTML dos itens
+  let itemsHTML = ""
+  
+  // Itens dos schedules
+  if (scheduleItems.length > 0) {
+    itemsHTML += scheduleItems.map((item: any) => `
       <tr>
         <td style="padding: 8px; border-bottom: 1px solid #ddd;">${item.description || "-"}</td>
         <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">${formatCurrency(item.amount)}</td>
       </tr>
+    `).join("")
+  }
+  
+  // Despesas adicionais
+  if (expenseItems.length > 0) {
+    itemsHTML += expenseItems.map((item: any) => `
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${item.description || "Despesa adicional"}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">${formatCurrency(item.amount)}</td>
+      </tr>
+    `).join("")
+  }
+  
+  // Descontos
+  if (discountItems.length > 0) {
+    itemsHTML += discountItems.map((item: any) => `
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${item.description || "Desconto"}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">${formatCurrency(-item.amount)}</td>
+      </tr>
+    `).join("")
+  }
+  
+  // Subtotais
+  let subtotalsHTML = ""
+  if (expenseItems.length > 0 || discountItems.length > 0) {
+    subtotalsHTML = `
+      <tr class="subtotal-row">
+        <td style="padding: 8px; border-top: 1px solid #ddd; font-weight: bold;">Subtotal (Schedules)</td>
+        <td style="padding: 8px; border-top: 1px solid #ddd; text-align: right; font-weight: bold;">${formatCurrency(schedulesSubtotal)}</td>
+      </tr>
     `
-    )
-    .join("")
+    if (expenseItems.length > 0) {
+      subtotalsHTML += `
+        <tr class="subtotal-row">
+          <td style="padding: 8px; font-weight: bold;">Subtotal (Despesas)</td>
+          <td style="padding: 8px; text-align: right; font-weight: bold;">${formatCurrency(expensesSubtotal)}</td>
+        </tr>
+      `
+    }
+    if (discountItems.length > 0) {
+      subtotalsHTML += `
+        <tr class="subtotal-row">
+          <td style="padding: 8px; font-weight: bold;">Subtotal (Descontos)</td>
+          <td style="padding: 8px; text-align: right; font-weight: bold;">${formatCurrency(-discountsSubtotal)}</td>
+        </tr>
+      `
+    }
+  }
 
   return `
 <!DOCTYPE html>
@@ -177,10 +239,17 @@ function generateDebitNoteHTML(
       padding: 8px;
       border-bottom: 1px solid #ddd;
     }
+    .subtotal-row {
+      background-color: #f9f9f9;
+    }
+    .subtotal-row td {
+      border-top: 1px solid #ddd;
+      padding: 8px;
+    }
     .total-row {
       font-weight: bold;
       font-size: 14px;
-      background-color: #f9f9f9;
+      background-color: #f0f0f0;
     }
     .total-row td {
       border-top: 2px solid #333;
@@ -241,6 +310,7 @@ function generateDebitNoteHTML(
       </thead>
       <tbody>
         ${itemsHTML}
+        ${subtotalsHTML}
         <tr class="total-row">
           <td>TOTAL</td>
           <td style="text-align: right;">${formatCurrency(debitNote.total_amount)}</td>
