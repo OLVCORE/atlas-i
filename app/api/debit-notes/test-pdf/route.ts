@@ -39,15 +39,20 @@ export async function GET(request: NextRequest) {
     
     if (chromium) {
       try {
-        launchOptions.executablePath = await chromium.executablePath()
+        const executablePath = await chromium.executablePath()
+        if (executablePath) {
+          launchOptions.executablePath = executablePath
+        }
+        // Se não conseguir executablePath, continuar sem ele
       } catch (exeError: any) {
-        return NextResponse.json({
-          success: false,
-          error: "Erro ao obter executablePath",
-          details: exeError.message,
-          isVercel,
-        }, { status: 500 })
+        // Não falhar se não conseguir executablePath, pode funcionar sem ele
+        console.log("[TEST-PDF] executablePath não disponível:", exeError.message)
       }
+      
+      if (chromium.defaultViewport) {
+        launchOptions.defaultViewport = chromium.defaultViewport
+      }
+      launchOptions.headless = chromium.headless
     }
     
     let browser

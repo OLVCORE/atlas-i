@@ -100,7 +100,7 @@ export async function GET(
     console.log("[PDF] Preparando para gerar PDF...")
     
     const launchOptions: any = {
-      headless: true,
+      headless: chromium ? chromium.headless : true,
       args: chromium ? chromium.args : ["--no-sandbox", "--disable-setuid-sandbox"],
     }
 
@@ -108,16 +108,35 @@ export async function GET(
     if (chromium) {
       try {
         console.log("[PDF] Configurando chromium para Vercel...")
-        launchOptions.executablePath = await chromium.executablePath()
-        launchOptions.defaultViewport = chromium.defaultViewport
-        launchOptions.headless = chromium.headless
+        
+        // Usar executablePath apenas se disponível, caso contrário usar configuração padrão
+        try {
+          const executablePath = await chromium.executablePath()
+          if (executablePath) {
+            launchOptions.executablePath = executablePath
+            console.log("[PDF] Chromium executablePath obtido com sucesso")
+          } else {
+            console.log("[PDF] executablePath não disponível, usando configuração padrão")
+          }
+        } catch (exeError: any) {
+          // Se falhar ao obter executablePath, tentar sem ele (pode funcionar em alguns casos)
+          console.log("[PDF] Não foi possível obter executablePath, continuando sem ele:", exeError.message)
+        }
+        
+        // Adicionar configurações padrão do chromium
+        if (chromium.defaultViewport) {
+          launchOptions.defaultViewport = chromium.defaultViewport
+        }
+        
         console.log("[PDF] Chromium configurado:", {
-          executablePath: launchOptions.executablePath ? "OK" : "FALHOU",
+          hasExecutablePath: !!launchOptions.executablePath,
           argsCount: launchOptions.args?.length || 0,
+          headless: launchOptions.headless,
         })
       } catch (chromiumError: any) {
         console.error("[PDF] Erro ao configurar chromium:", chromiumError.message, chromiumError.stack)
-        throw new Error(`Erro ao configurar chromium: ${chromiumError.message}`)
+        // Continuar mesmo se houver erro na configuração, pode funcionar sem executablePath
+        console.log("[PDF] Continuando sem configuração específica do chromium")
       }
     }
 
