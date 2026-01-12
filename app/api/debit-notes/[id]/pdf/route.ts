@@ -106,13 +106,14 @@ export async function GET(
     }
 
     let page
+    let pdfBuffer
     try {
       console.log("[PDF] Criando nova página...")
       page = await browser.newPage()
       console.log("[PDF] Carregando HTML...")
       await page.setContent(html, { waitUntil: "networkidle0" })
       console.log("[PDF] Gerando PDF...")
-      const pdfBuffer = await page.pdf({
+      pdfBuffer = await page.pdf({
         format: "A4",
         printBackground: true,
         margin: {
@@ -124,7 +125,6 @@ export async function GET(
       })
       console.log("[PDF] PDF gerado com sucesso, tamanho:", pdfBuffer.length)
       await browser.close()
-      return pdfBuffer
     } catch (pdfError: any) {
       console.error("[PDF] Erro ao gerar PDF:", pdfError.message)
       if (browser) {
