@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { LineItemsEditor, type LineItem } from "@/components/contracts/line-items-editor"
+import { Maximize2, Minimize2 } from "lucide-react"
 import type { Contract } from "@/lib/contracts"
 import type { ContractSchedule } from "@/lib/schedules"
 
