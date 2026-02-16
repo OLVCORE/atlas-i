@@ -54,15 +54,6 @@ export default async function PurchasesPage({
 }: {
   searchParams: { success?: string }
 }) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect("/login")
-  }
-
   let entities = []
   try {
     entities = await listEntities()

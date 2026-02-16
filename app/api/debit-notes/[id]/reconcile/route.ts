@@ -13,10 +13,6 @@ export async function POST(
       data: { user },
     } = await supabase.auth.getUser()
 
-    if (!user) {
-      return NextResponse.json({ error: "Não autenticado" }, { status: 401 })
-    }
-
     const workspace = await getActiveWorkspace()
     const debitNoteId = params.id
     const body = await request.json()

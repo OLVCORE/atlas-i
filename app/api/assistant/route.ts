@@ -36,10 +36,6 @@ export async function POST(request: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser()
 
-    if (!user) {
-      return NextResponse.json({ error: "Não autenticado" }, { status: 401 })
-    }
-
     // Validar API key ANTES de processar qualquer coisa
     if (!OPENAI_API_KEY) {
       return NextResponse.json(

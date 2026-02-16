@@ -51,15 +51,6 @@ async function createTransactionAction(formData: FormData) {
 }
 
 export default async function LedgerPage() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect("/login")
-  }
-
   let transactions = []
   let entities = []
   let accounts = []

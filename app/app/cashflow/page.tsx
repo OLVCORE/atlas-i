@@ -1,5 +1,3 @@
-import { redirect } from "next/navigation"
-import { createClient } from "@/lib/supabase/server"
 import { getCashflow } from "@/lib/cashflow"
 import { getMonthlyCashflowMatrix } from "@/lib/cashflow/monthly"
 import { listEntities } from "@/lib/entities"
@@ -35,15 +33,6 @@ export default async function CashflowPage({
     show?: 'both' | 'planned' | 'realised'
   }
 }) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect("/login")
-  }
-
   // Resolver searchParams se for Promise (Next.js 15)
   const resolvedParams = searchParams && typeof (searchParams as any).then === 'function' 
     ? await (searchParams as Promise<any>)

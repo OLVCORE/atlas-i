@@ -11,10 +11,6 @@ export async function GET(request: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser()
 
-    if (!user) {
-      return NextResponse.json({ error: "Não autenticado" }, { status: 401 })
-    }
-
     const searchParams = request.nextUrl.searchParams
     const entityId = searchParams.get("entityId")
 

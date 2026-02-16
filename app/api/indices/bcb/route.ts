@@ -22,10 +22,6 @@ export async function GET(request: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser()
 
-    if (!user) {
-      return NextResponse.json({ error: "Não autenticado" }, { status: 401 })
-    }
-
     const searchParams = request.nextUrl.searchParams
     const index = searchParams.get("index") as IndexType
     const startDate = searchParams.get("startDate")

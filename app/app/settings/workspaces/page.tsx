@@ -43,15 +43,6 @@ async function switchWorkspaceAction(formData: FormData) {
 }
 
 export default async function WorkspacesPage() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect("/login")
-  }
-
   let workspaces = []
   let activeWorkspaceId = null
 

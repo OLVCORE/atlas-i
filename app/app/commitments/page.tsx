@@ -204,15 +204,6 @@ export default async function CommitmentsPage({
 }: {
   searchParams: { entity_id?: string }
 }) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect("/login")
-  }
-
   const entityIdFilter = searchParams.entity_id && searchParams.entity_id.trim() !== "" 
     ? searchParams.entity_id.trim() 
     : undefined

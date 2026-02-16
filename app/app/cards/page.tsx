@@ -30,15 +30,6 @@ async function createCardAction(data: {
 }
 
 export default async function CardsPage() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect("/login")
-  }
-
   let cards = []
   let entities = []
   try {

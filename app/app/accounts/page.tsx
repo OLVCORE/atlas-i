@@ -183,15 +183,6 @@ export default async function AccountsPage({
 }: {
   searchParams: { entity_id?: string }
 }) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect("/login")
-  }
-
   const workspace = await getActiveWorkspace()
   const entityIdFilter = searchParams.entity_id?.trim() || null
 

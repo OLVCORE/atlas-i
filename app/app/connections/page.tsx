@@ -40,15 +40,6 @@ async function syncConnectionAction(connectionId: string) {
 }
 
 export default async function ConnectionsPage() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect("/login")
-  }
-
   let entities = []
   let catalog = []
   let providers = []

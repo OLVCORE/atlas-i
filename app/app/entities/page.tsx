@@ -206,15 +206,6 @@ export default async function EntitiesPage({
 }: {
   searchParams: { edit?: string; refresh?: string }
 }) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect("/login")
-  }
-
   let entities = []
   try {
     entities = await listEntities()

@@ -1,5 +1,3 @@
-import { redirect } from "next/navigation"
-import { createClient } from "@/lib/supabase/server"
 import { listEntities } from "@/lib/entities"
 import { listCards } from "@/lib/cards/purchases"
 import { listInstallmentsByCardAndPeriod, listInstallmentsByEntityAndPeriod } from "@/lib/cards/installments"
@@ -11,15 +9,6 @@ export default async function InstallmentsPage({
 }: {
   searchParams: { entityId?: string; cardId?: string; startMonth?: string; endMonth?: string; status?: string }
 }) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect("/login")
-  }
-
   let entities = []
   let cards = []
   let installments = []

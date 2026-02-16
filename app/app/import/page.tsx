@@ -2,23 +2,12 @@
  * MC12: Página de importação de planilhas
  */
 
-import { redirect } from "next/navigation"
-import { createClient } from "@/lib/supabase/server"
 import { listEntities } from "@/lib/entities"
 import { listAllAccounts } from "@/lib/accounts"
 import { ImportWizard } from "@/components/import-wizard"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 export default async function ImportPage() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect("/login")
-  }
-
   try {
     const entities = await listEntities()
     const accounts = await listAllAccounts()

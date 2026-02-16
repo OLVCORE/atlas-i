@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { getExecutiveDashboardKPIs } from "@/lib/dashboard/kpis"
 import { listEntities } from "@/lib/entities"
@@ -27,13 +26,7 @@ export default async function DashboardPage({
   }
 }) {
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect("/login")
-  }
+  const { data: { user } } = await supabase.auth.getUser()
 
   // Resolver searchParams se for Promise (Next.js 15)
   const resolvedParams = searchParams && typeof (searchParams as any).then === 'function' 
@@ -72,7 +65,7 @@ export default async function DashboardPage({
       entityId: entityId || null,
       accountId: accountId || null,
     })
-    await upsertAlerts(proposed, user.id)
+    if (user?.id) await upsertAlerts(proposed, user.id)
     await resolveStaleAlerts(workspace.id)
 
     // Buscar alertas open (top críticos e avisos)

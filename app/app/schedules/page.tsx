@@ -1,6 +1,4 @@
-import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
-import { createClient } from "@/lib/supabase/server"
 import { getActiveWorkspace } from "@/lib/workspace"
 import { listSchedulesByCommitment, listSchedulesByPeriod, listSchedulesByContract } from "@/lib/schedules"
 import { listCommitments } from "@/lib/commitments"
@@ -153,15 +151,6 @@ export default async function SchedulesPage({
 }: {
   searchParams: Promise<{ commitmentId?: string; contractId?: string; startDate?: string; endDate?: string }> | { commitmentId?: string; contractId?: string; startDate?: string; endDate?: string }
 }) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect("/login")
-  }
-
   // Resolver searchParams se for Promise (Next.js 15)
   const resolvedParams = searchParams && typeof (searchParams as any).then === 'function' 
     ? await (searchParams as Promise<any>)

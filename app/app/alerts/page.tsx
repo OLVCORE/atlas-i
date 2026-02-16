@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
 import { getActiveWorkspace } from "@/lib/workspace"
@@ -164,13 +163,7 @@ export default async function AlertsPage({
   searchParams: Promise<{ entityId?: string; severity?: string; state?: string }> | { entityId?: string; severity?: string; state?: string }
 }) {
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect("/login")
-  }
+  const { data: { user } } = await supabase.auth.getUser()
 
   // Resolver searchParams se for Promise (Next.js 15)
   const resolvedParams = searchParams && typeof (searchParams as any).then === 'function' 
@@ -203,7 +196,7 @@ export default async function AlertsPage({
       accountId: null,
     })
 
-    await upsertAlerts(proposed, user.id)
+    if (user?.id) await upsertAlerts(proposed, user.id)
     await resolveStaleAlerts(workspace.id)
 
     // Listar alertas filtrados (apenas open e não snoozed por padrão, a menos que stateFilter esteja definido)

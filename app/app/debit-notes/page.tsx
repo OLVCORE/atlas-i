@@ -1,6 +1,4 @@
-import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
-import { createClient } from "@/lib/supabase/server"
 import { listDebitNotes, updateDebitNote, deleteDebitNote } from "@/lib/debit-notes"
 import { listContracts } from "@/lib/contracts"
 import { listEntities } from "@/lib/entities"
@@ -102,15 +100,6 @@ async function deleteDebitNoteAction(debitNoteId: string): Promise<{ success: bo
 }
 
 export default async function DebitNotesPage() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect("/login")
-  }
-
   let debitNotes = []
   let contracts = []
   let entities = []

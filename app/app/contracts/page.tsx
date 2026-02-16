@@ -290,15 +290,6 @@ async function createContractAction(prevState: any, formData: FormData) {
 }
 
 export default async function ContractsPage() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect("/login")
-  }
-
   let contracts = []
   let entities = []
   let schedulesByContract: Record<string, any[]> = {}

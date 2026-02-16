@@ -110,15 +110,6 @@ export default async function EditContractPage({
 }: {
   params: Promise<{ id: string }>
 }) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect("/login")
-  }
-
   const { id } = await params
   const workspace = await getActiveWorkspace()
 

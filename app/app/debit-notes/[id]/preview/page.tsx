@@ -1,9 +1,8 @@
-import { createClient } from "@/lib/supabase/server"
 import { getActiveWorkspace } from "@/lib/workspace"
 import { getDebitNoteById } from "@/lib/debit-notes"
 import { listContracts } from "@/lib/contracts"
 import { listEntities } from "@/lib/entities"
-import { notFound, redirect } from "next/navigation"
+import { notFound } from "next/navigation"
 import DebitNotePreview from "@/components/debit-notes/debit-note-preview"
 
 export default async function DebitNotePreviewPage({
@@ -11,15 +10,6 @@ export default async function DebitNotePreviewPage({
 }: {
   params: { id: string }
 }) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect("/login")
-  }
-
   const workspace = await getActiveWorkspace()
   const debitNoteId = params.id
 

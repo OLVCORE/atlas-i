@@ -2,21 +2,11 @@
  * MC13: Página de configuração de scrapers bancários
  */
 
-import { createClient } from "@/lib/supabase/server"
 import { listEntities } from "@/lib/entities"
 import { listAllAccounts } from "@/lib/accounts"
 import { ScrapersManager } from "@/components/scrapers-manager"
 
 export default async function ScrapersPage() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    return <div>Não autenticado</div>
-  }
-
   const entities = await listEntities()
   const accounts = await listAllAccounts()
 
