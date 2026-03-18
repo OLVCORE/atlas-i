@@ -14,8 +14,9 @@ console.log('Verificando configuração do ambiente...\n');
 if (!fs.existsSync(envPath)) {
   console.error('❌ Arquivo .env.local não encontrado!');
   console.log('\nCrie o arquivo .env.local na raiz do projeto com:');
-  console.log('\nNEXT_PUBLIC_SUPABASE_URL=https://vydsayvhovuqfdelxtko.supabase.co');
-  console.log('NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_REJMwtwd8DddDHN15Ppgfw_w9fKY3Su\n');
+  console.log('\nNEXT_PUBLIC_SUPABASE_URL=https://pckjwagfaheovfdfoupy.supabase.co');
+  console.log('NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key do Supabase Dashboard > API>');
+  console.log('SUPABASE_SERVICE_ROLE_KEY=<service_role key do Supabase Dashboard > API>\n');
   process.exit(1);
 }
 

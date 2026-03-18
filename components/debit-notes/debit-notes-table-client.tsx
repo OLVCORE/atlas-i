@@ -51,7 +51,12 @@ export function DebitNotesTableClient({
     return contract?.title || "Desconhecido"
   }
 
-  const getEntityName = (contractId: string) => {
+  const getEntityName = (contractId: string | null, entityId?: string | null) => {
+    if (entityId) {
+      const entity = entities.find((e) => e.id === entityId)
+      return entity?.legal_name || "—"
+    }
+    if (!contractId) return "—"
     const contract = contracts.find((c) => c.id === contractId)
     if (!contract) return "Desconhecido"
     const entity = entities.find((e) => e.id === contract.counterparty_entity_id)
@@ -160,7 +165,7 @@ export function DebitNotesTableClient({
               <TableRow key={note.id}>
                 <TableCell className="font-medium">{note.number}</TableCell>
                 <TableCell>{getContractName(note.contract_id)}</TableCell>
-                <TableCell>{getEntityName(note.contract_id)}</TableCell>
+                <TableCell>{getEntityName(note.contract_id, note.entity_id)}</TableCell>
                 <TableCell>{formatCurrency(note.total_amount, note.currency)}</TableCell>
                 <TableCell>{formatDate(note.issued_date)}</TableCell>
                 <TableCell>{formatDate(note.due_date)}</TableCell>
@@ -264,6 +269,7 @@ export function DebitNotesTableClient({
           open={editDialogOpen}
           onOpenChange={setEditDialogOpen}
           debitNote={selectedDebitNote}
+          entities={entities}
           onUpdateAction={onUpdateAction}
         />
       )}

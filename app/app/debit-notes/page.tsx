@@ -15,6 +15,8 @@ async function updateDebitNoteAction(prevState: any, formData: FormData) {
       return { ok: false, error: "ID da nota de débito não fornecido" }
     }
 
+    const number = formData.get("number") as string | null
+    const entityId = formData.get("entity_id") as string | null
     const description = formData.get("description") as string | null
     const clientName = formData.get("client_name") as string | null
     const notes = formData.get("notes") as string | null
@@ -47,6 +49,8 @@ async function updateDebitNoteAction(prevState: any, formData: FormData) {
     }
 
     await updateDebitNote(debitNoteId, {
+      number: number != null && number.trim() ? number.trim() : undefined,
+      entityId: entityId && entityId.trim() ? entityId.trim() : null,
       description: description || null,
       clientName: clientName || null,
       notes: notes || null,
@@ -147,7 +151,7 @@ export default async function DebitNotesPage() {
               Gerencie e emita notas de débito para recebíveis de contratos
             </p>
           </div>
-          <GenerateDebitNoteDialog contracts={contracts} />
+          <GenerateDebitNoteDialog contracts={contracts} entities={entities} />
         </div>
 
         {/* Cards de Estatísticas */}

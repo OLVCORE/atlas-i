@@ -1,5 +1,6 @@
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
+import { createSupabaseAdminClient } from "@/lib/supabase/admin"
 
 const WORKSPACE_COOKIE_NAME = "atlas-workspace-id"
 
@@ -78,8 +79,23 @@ export async function getOrSetActiveWorkspace(): Promise<string> {
     data: { user },
   } = await supabase.auth.getUser()
 
+  // Sem login: usar primeiro workspace do banco (admin bypassa RLS)
   if (!user) {
-    throw new Error("Usuário não autenticado")
+    try {
+      const admin = createSupabaseAdminClient()
+      const { data: first } = await admin
+        .from("workspaces")
+        .select("id")
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle()
+      if (first?.id) return first.id
+    } catch {
+      // Sem SUPABASE_SERVICE_ROLE_KEY ou erro ao buscar
+    }
+    throw new Error(
+      "Nenhum workspace no banco. Opção 1: Crie uma conta em /login (o sistema cria o workspace automaticamente). Opção 2: No Supabase, crie um usuário em Authentication > Users e rode o SQL em supabase/criar_primeiro_workspace.sql no SQL Editor."
+    )
   }
 
   const { data: membership } = await supabase

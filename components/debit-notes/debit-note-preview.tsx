@@ -7,8 +7,10 @@ import { useRef } from "react"
 
 interface DebitNotePreviewProps {
   debitNote: any
-  contract: any
-  entity: any
+  /** Null para nota avulsa (sem contrato) */
+  contract: any | null
+  /** Null quando não há contrato ou entidade do contrato */
+  entity: any | null
 }
 
 export default function DebitNotePreview({
@@ -16,6 +18,7 @@ export default function DebitNotePreview({
   contract,
   entity,
 }: DebitNotePreviewProps) {
+  const isAvulsa = !contract
   const router = useRouter()
   const printRef = useRef<HTMLDivElement>(null)
 
@@ -140,20 +143,32 @@ export default function DebitNotePreview({
           </div>
         </div>
 
-        {/* Informações do Cliente - Layout Compacto em 2 Colunas */}
+        {/* Informações do Cliente / Nota avulsa - Layout Compacto em 2 Colunas */}
         <div className="grid grid-cols-2 gap-x-6 gap-y-1 mb-4 print:mb-3 text-xs print:text-[10px] text-gray-900 print:text-black">
-          <div>
-            <span className="font-semibold">Entidade:</span> {entity.legal_name}
-          </div>
-          <div>
-            <span className="font-semibold">Documento:</span> {entity.document}
-          </div>
+          {entity && (
+            <>
+              <div>
+                <span className="font-semibold">Entidade:</span> {entity.legal_name}
+              </div>
+              <div>
+                <span className="font-semibold">Documento:</span> {entity.document}
+              </div>
+            </>
+          )}
           <div className="col-span-2">
-            <span className="font-semibold">Cliente:</span> {debitNote.client_name || entity.legal_name}
+            <span className="font-semibold">Cliente:</span>{" "}
+            {debitNote.client_name || (entity?.legal_name ?? "—")}
           </div>
-          <div className="col-span-2">
-            <span className="font-semibold">Contrato:</span> {contract.title}
-          </div>
+          {contract && (
+            <div className="col-span-2">
+              <span className="font-semibold">Contrato:</span> {contract.title}
+            </div>
+          )}
+          {isAvulsa && (
+            <div className="col-span-2 text-gray-600 print:text-gray-700">
+              Nota avulsa (sem vínculo a contrato)
+            </div>
+          )}
           {debitNote.description && (
             <div className="col-span-2">
               <span className="font-semibold">Descrição:</span> {debitNote.description}
@@ -236,11 +251,11 @@ export default function DebitNotePreview({
           </tbody>
         </table>
 
-        {/* Observações */}
+        {/* Observações - sem limite de altura; na impressão pode quebrar em nova página */}
         {debitNote.notes && (
-          <div className="mt-3 print:mt-2 pt-2 print:pt-1 border-t border-gray-300">
+          <div className="debit-note-notes mt-3 print:mt-2 pt-2 print:pt-1 border-t border-gray-300 overflow-visible min-h-0">
             <h3 className="font-semibold mb-1 print:mb-0.5 text-xs print:text-[10px] text-gray-900 print:text-black">Observações:</h3>
-            <div className="text-xs print:text-[10px] text-gray-700 print:text-black whitespace-pre-line leading-tight">
+            <div className="text-xs print:text-[10px] text-gray-700 print:text-black whitespace-pre-wrap break-words leading-relaxed">
               {debitNote.notes}
             </div>
           </div>
@@ -332,6 +347,13 @@ export default function DebitNotePreview({
           table td, table th {
             padding: 4px 6px !important;
             line-height: 1.3 !important;
+          }
+          
+          /* Observações: exibir por completo e permitir quebra de página se necessário */
+          .debit-note-notes {
+            overflow: visible !important;
+            max-height: none !important;
+            page-break-inside: auto !important;
           }
         }
       `}</style>

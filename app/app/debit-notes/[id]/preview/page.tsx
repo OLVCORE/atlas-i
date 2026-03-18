@@ -19,18 +19,20 @@ export default async function DebitNotePreviewPage({
     notFound()
   }
 
-  // Buscar contrato
-  const contracts = await listContracts()
-  const contract = contracts.find((c) => c.id === debitNote.contract_id)
-  if (!contract) {
-    notFound()
-  }
-
-  // Buscar entidade (cliente)
+  let contract: Awaited<ReturnType<typeof listContracts>>[number] | null = null
+  let entity: Awaited<ReturnType<typeof listEntities>>[number] | null = null
   const entities = await listEntities()
-  const entity = entities.find((e) => e.id === contract.counterparty_entity_id)
-  if (!entity) {
-    notFound()
+
+  if (debitNote.contract_id) {
+    const contracts = await listContracts()
+    contract = contracts.find((c) => c.id === debitNote.contract_id) ?? null
+    if (contract) {
+      entity = entities.find((e) => e.id === contract!.counterparty_entity_id) ?? null
+    }
+  }
+  // Nota avulsa ou sem entidade do contrato: usar entity_id gravado na nota
+  if (!entity && debitNote.entity_id) {
+    entity = entities.find((e) => e.id === debitNote.entity_id) ?? null
   }
 
   return <DebitNotePreview debitNote={debitNote} contract={contract} entity={entity} />

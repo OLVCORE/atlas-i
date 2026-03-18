@@ -13,18 +13,27 @@ export async function POST(request: NextRequest) {
     const workspace = await getActiveWorkspace()
     const body = await request.json()
 
-    const { contractId, scheduleIds, description, clientName, notes, expenses, discounts } = body
+    const { contractId, scheduleIds, entityId, description, clientName, notes, expenses, discounts, dueDate } = body
 
-    if (!contractId || !scheduleIds || !Array.isArray(scheduleIds) || scheduleIds.length === 0) {
+    const isAvulsa = contractId == null || contractId === "" || !Array.isArray(scheduleIds) || scheduleIds.length === 0
+    if (!isAvulsa && (!contractId || !scheduleIds?.length)) {
       return NextResponse.json(
-        { error: "contractId e scheduleIds são obrigatórios" },
+        { error: "Para nota com contrato, contractId e scheduleIds são obrigatórios" },
+        { status: 400 }
+      )
+    }
+    if (isAvulsa && !dueDate) {
+      return NextResponse.json(
+        { error: "Para nota avulsa, dueDate (data de vencimento) é obrigatório" },
         { status: 400 }
       )
     }
 
     const debitNote = await createDebitNote({
-      contractId,
-      scheduleIds,
+      contractId: contractId || null,
+      scheduleIds: Array.isArray(scheduleIds) ? scheduleIds : [],
+      entityId: entityId || null,
+      dueDate: dueDate || undefined,
       description: description || null,
       clientName: clientName || null,
       notes: notes || null,

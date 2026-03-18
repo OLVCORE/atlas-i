@@ -15,7 +15,9 @@ import { getContractById } from "./contracts"
 export type DebitNote = {
   id: string
   workspace_id: string
-  contract_id: string
+  contract_id: string | null
+  /** Entidade (cliente) vinculada; preenchimento manual em notas avulsas. */
+  entity_id: string | null
   number: string
   sequence_number: number
   issued_date: string
@@ -48,9 +50,14 @@ export type DebitNoteWithItems = DebitNote & {
 }
 
 export type CreateDebitNoteInput = {
-  contractId: string
-  scheduleIds: string[] // Múltiplos schedules para incluir na nota
+  /** Nota avulsa: omitir ou null. Com contrato: obrigatório. */
+  contractId?: string | null
+  /** Schedules do contrato. Para nota avulsa: omitir ou []. */
+  scheduleIds?: string[]
+  /** Entidade (cliente) para nota avulsa; opcional. */
+  entityId?: string | null
   issuedDate?: string | Date
+  /** Obrigatório para nota avulsa (sem contrato). */
   dueDate?: string | Date
   description?: string
   clientName?: string | null
@@ -91,206 +98,195 @@ export async function generateNextDebitNoteNumber(): Promise<{ number: string; s
   return { number, sequenceNumber: nextSequence }
 }
 
+const isAvulsa = (input: CreateDebitNoteInput) =>
+  input.contractId == null || input.contractId === "" || (input.scheduleIds && input.scheduleIds.length === 0)
+
 /**
- * Cria uma nova nota de débito a partir de schedules
+ * Cria uma nova nota de débito (com contrato + schedules ou avulsa com despesas/descontos)
  */
 export async function createDebitNote(input: CreateDebitNoteInput): Promise<DebitNoteWithItems> {
   const supabase = await createClient()
   const workspace = await getActiveWorkspace()
-  
-  // Validações
-  validateNotEmpty(input.contractId, "Contrato")
-  if (!input.scheduleIds || input.scheduleIds.length === 0) {
-    throw new Error("É necessário selecionar pelo menos um schedule")
-  }
-  
-  // Buscar schedules
-  const { data: schedules, error: schedulesError } = await supabase
-    .from("contract_schedules")
-    .select("*")
-    .eq("workspace_id", workspace.id)
-    .eq("contract_id", input.contractId)
-    .in("id", input.scheduleIds)
-    .eq("status", "planned") // Apenas schedules não realizados
-    .eq("type", "receivable") // Apenas recebíveis
-  
-  if (schedulesError) {
-    throw new Error(`Erro ao buscar schedules: ${schedulesError.message}`)
-  }
-  
-  if (!schedules || schedules.length === 0) {
-    throw new Error("Nenhum schedule válido encontrado")
-  }
-  
-  if (schedules.length !== input.scheduleIds.length) {
-    throw new Error("Alguns schedules não foram encontrados ou não são válidos")
-  }
-  
-  // Verificar se os schedules já têm nota de débito (apenas notas não canceladas)
-  // Notas canceladas e deletadas liberam os schedules para uso
-  const { data: allNotes, error: notesError } = await supabase
-    .from("debit_notes")
-    .select("id, status")
-    .eq("workspace_id", workspace.id)
-    // .is("deleted_at", null) // Temporariamente desabilitado até migration ser executada
-  
-  if (notesError) {
-    throw new Error(`Erro ao verificar notas existentes: ${notesError.message}`)
-  }
-  
-  // Filtrar apenas notas não canceladas (canceladas liberam os schedules)
-  // Notas deletadas também liberam os schedules
-  const activeNoteIds = (allNotes || [])
-    .filter(note => note.status !== 'cancelled')
-    .map(note => note.id)
-  
-  if (activeNoteIds.length > 0) {
-    // Buscar items apenas de notas ativas (não canceladas)
-    const { data: existingItems, error: existingError } = await supabase
-      .from("debit_note_items")
-      .select("contract_schedule_id")
-      .in("debit_note_id", activeNoteIds)
-      .in("contract_schedule_id", input.scheduleIds)
-      .not("contract_schedule_id", "is", null)
-      .limit(1)
-    
-    if (existingError) {
-      throw new Error(`Erro ao verificar schedules existentes: ${existingError.message}`)
+  const avulsa = isAvulsa(input)
+
+  let schedules: { id: string; amount: number; due_date: string }[] = []
+  let dueDate: Date
+
+  if (avulsa) {
+    // Nota avulsa: sem contrato; total = despesas - descontos; dueDate obrigatório
+    const expensesAmount = (input.expenses || []).reduce((sum, e) => sum + Math.abs(e.amount || 0), 0)
+    const discountsAmount = (input.discounts || []).reduce((sum, d) => sum + Math.abs(d.amount || 0), 0)
+    const totalAmount = expensesAmount - discountsAmount
+    if (totalAmount <= 0) {
+      throw new Error("Nota avulsa: inclua pelo menos uma despesa e o total deve ser maior que zero (despesas - descontos)")
     }
-    
-    if (existingItems && existingItems.length > 0) {
-      throw new Error("Um ou mais schedules já possuem nota de débito")
+    validateAmount(totalAmount)
+    if (!input.dueDate) {
+      throw new Error("Nota avulsa: data de vencimento é obrigatória")
     }
+    dueDate = typeof input.dueDate === "string" ? parseDateISO(input.dueDate) : input.dueDate
+  } else {
+    // Com contrato: validar e buscar schedules
+    validateNotEmpty(input.contractId!, "Contrato")
+    const scheduleIds = input.scheduleIds || []
+    if (scheduleIds.length === 0) {
+      throw new Error("É necessário selecionar pelo menos um schedule")
+    }
+
+    const { data: schedulesData, error: schedulesError } = await supabase
+      .from("contract_schedules")
+      .select("*")
+      .eq("workspace_id", workspace.id)
+      .eq("contract_id", input.contractId!)
+      .in("id", scheduleIds)
+      .eq("status", "planned")
+      .eq("type", "receivable")
+
+    if (schedulesError) {
+      throw new Error(`Erro ao buscar schedules: ${schedulesError.message}`)
+    }
+    if (!schedulesData || schedulesData.length === 0) {
+      throw new Error("Nenhum schedule válido encontrado")
+    }
+    if (schedulesData.length !== scheduleIds.length) {
+      throw new Error("Alguns schedules não foram encontrados ou não são válidos")
+    }
+    schedules = schedulesData
+
+    // Verificar se os schedules já têm nota de débito
+    const { data: allNotes, error: notesError } = await supabase
+      .from("debit_notes")
+      .select("id, status")
+      .eq("workspace_id", workspace.id)
+
+    if (!notesError && allNotes && allNotes.length > 0) {
+      const activeNoteIds = allNotes.filter((n) => n.status !== "cancelled").map((n) => n.id)
+      const { data: existingItems } = await supabase
+        .from("debit_note_items")
+        .select("contract_schedule_id")
+        .in("debit_note_id", activeNoteIds)
+        .in("contract_schedule_id", scheduleIds)
+        .not("contract_schedule_id", "is", null)
+        .limit(1)
+      if (existingItems && existingItems.length > 0) {
+        throw new Error("Um ou mais schedules já possuem nota de débito")
+      }
+    }
+
+    const schedulesAmount = schedules.reduce((sum, s) => sum + Number(s.amount), 0)
+    const expensesAmount = (input.expenses || []).reduce((sum, e) => sum + Math.abs(e.amount || 0), 0)
+    const discountsAmount = (input.discounts || []).reduce((sum, d) => sum + Math.abs(d.amount || 0), 0)
+    const totalAmount = schedulesAmount + expensesAmount - discountsAmount
+    validateAmount(totalAmount)
+    dueDate = schedules.reduce(
+      (max, s) => {
+        const sDate = parseDateISO(s.due_date)
+        return sDate > max ? sDate : max
+      },
+      parseDateISO(schedules[0].due_date)
+    )
   }
-  
-  // Calcular valor total (schedules + expenses - discounts)
-  const schedulesAmount = schedules.reduce((sum, s) => sum + Number(s.amount), 0)
+
   const expensesAmount = (input.expenses || []).reduce((sum, e) => sum + Math.abs(e.amount || 0), 0)
-  // Descontos: sempre usar valor absoluto (positivo) e subtrair
   const discountsAmount = (input.discounts || []).reduce((sum, d) => sum + Math.abs(d.amount || 0), 0)
+  const schedulesAmount = schedules.reduce((sum, s) => sum + Number(s.amount), 0)
   const totalAmount = schedulesAmount + expensesAmount - discountsAmount
-  validateAmount(totalAmount)
-  
-  // Determinar datas
-  const issuedDate = input.issuedDate 
-    ? (typeof input.issuedDate === 'string' ? parseDateISO(input.issuedDate) : input.issuedDate)
+
+  const issuedDate = input.issuedDate
+    ? typeof input.issuedDate === "string"
+      ? parseDateISO(input.issuedDate)
+      : input.issuedDate
     : new Date()
-  
-  // Vencimento = maior due_date dos schedules
-  const dueDate = schedules.reduce((max, s) => {
-    const sDate = parseDateISO(s.due_date)
-    return sDate > max ? sDate : max
-  }, parseDateISO(schedules[0].due_date))
-  
-  // Gerar número da nota
+
   const { number, sequenceNumber } = await generateNextDebitNoteNumber()
-  
-  // Criar nota de débito
+
   const { data: debitNote, error: noteError } = await supabase
     .from("debit_notes")
     .insert({
       workspace_id: workspace.id,
-      contract_id: input.contractId,
+      contract_id: avulsa ? null : input.contractId!,
+      entity_id: input.entityId || null,
       number,
       sequence_number: sequenceNumber,
       issued_date: formatDateISO(issuedDate),
       due_date: formatDateISO(dueDate),
       total_amount: totalAmount,
-      currency: 'BRL',
-      status: 'draft',
+      currency: "BRL",
+      status: "draft",
       description: input.description || null,
       client_name: input.clientName || null,
       notes: input.notes || null,
     })
     .select()
     .single()
-  
+
   if (noteError) {
     throw new Error(`Erro ao criar nota de débito: ${noteError.message}`)
   }
-  
-  // Criar itens da nota (schedules + expenses + discounts)
+
   const scheduleItems = schedules.map((schedule, index) => ({
     workspace_id: workspace.id,
     debit_note_id: debitNote.id,
     contract_schedule_id: schedule.id,
     amount: Number(schedule.amount),
-    currency: 'BRL',
+    currency: "BRL",
     description: schedule.due_date ? `Item - ${schedule.due_date}` : null,
-    type: null, // NULL = item do schedule
+    type: null,
     item_order: index,
   }))
-  
+
   const expenseItems = (input.expenses || []).map((expense, index) => ({
     workspace_id: workspace.id,
     debit_note_id: debitNote.id,
     contract_schedule_id: null,
     amount: expense.amount,
-    currency: 'BRL',
+    currency: "BRL",
     description: expense.description || null,
-    type: 'expense',
+    type: "expense",
     item_order: scheduleItems.length + index,
   }))
-  
+
   const discountItems = (input.discounts || []).map((discount, index) => ({
     workspace_id: workspace.id,
     debit_note_id: debitNote.id,
     contract_schedule_id: null,
-    // Sempre salvar desconto como valor positivo (será subtraído no cálculo)
     amount: Math.abs(discount.amount || 0),
-    currency: 'BRL',
+    currency: "BRL",
     description: discount.description || null,
-    type: 'discount',
+    type: "discount",
     item_order: scheduleItems.length + expenseItems.length + index,
   }))
-  
+
   const itemsToInsert = [...scheduleItems, ...expenseItems, ...discountItems]
-  
+
   const { data: items, error: itemsError } = await supabase
     .from("debit_note_items")
     .insert(itemsToInsert)
     .select()
-  
+
   if (itemsError) {
-    // Rollback: deletar nota criada
-    await supabase
-      .from("debit_notes")
-      .delete()
-      .eq("id", debitNote.id)
-      .eq("workspace_id", workspace.id)
-    
+    await supabase.from("debit_notes").delete().eq("id", debitNote.id).eq("workspace_id", workspace.id)
     throw new Error(`Erro ao criar itens da nota: ${itemsError.message}`)
   }
 
-  // Provisionar despesas como financial_commitments
-  // Buscar contrato para obter a entidade do workspace (usar entity_id do workspace, não counterparty)
-  const contract = await getContractById(input.contractId)
-  if (!contract) {
-    // Rollback: deletar nota e itens criados
-    await supabase.from("debit_note_items").delete().eq("debit_note_id", debitNote.id)
-    await supabase.from("debit_notes").delete().eq("id", debitNote.id).eq("workspace_id", workspace.id)
-    throw new Error("Contrato não encontrado")
-  }
-
-  // Buscar a entidade do workspace (a entidade que emite a nota)
-  // Precisamos buscar todas as entidades do workspace e usar a primeira (ou criar uma lógica para identificar)
-  const { data: workspaceEntities, error: entitiesError } = await supabase
+  // Entidade para provisionar despesas: contrato (se houver) ou primeira entidade do workspace
+  let entityId: string | null = null
+  const { data: workspaceEntities } = await supabase
     .from("entities")
     .select("id")
     .eq("workspace_id", workspace.id)
     .limit(1)
-    .single()
-
-  if (entitiesError || !workspaceEntities) {
-    // Se não encontrar entidade, usar a entidade do contrato (counterparty)
-    // Mas isso não está correto para despesas - despesas são da empresa que emite
-    // Por enquanto, vamos usar a counterparty_entity_id como fallback, mas idealmente deveria ter uma entidade padrão do workspace
+    .maybeSingle()
+  if (workspaceEntities?.id) {
+    entityId = workspaceEntities.id
+  }
+  if (!entityId && !avulsa && input.contractId) {
+    const contract = await getContractById(input.contractId)
+    if (contract) entityId = contract.counterparty_entity_id
   }
 
-  const entityId = workspaceEntities?.id || contract.counterparty_entity_id
-
-  // Criar financial_commitments e financial_schedules para cada despesa
-  if (input.expenses && input.expenses.length > 0) {
+  // Criar financial_commitments e financial_schedules para cada despesa (quando há entityId)
+  if (input.expenses && input.expenses.length > 0 && entityId) {
     const expenseCommitments: Array<{ itemId: string; commitmentId: string }> = []
     
     for (let i = 0; i < input.expenses.length; i++) {
@@ -308,7 +304,7 @@ export async function createDebitNote(input: CreateDebitNoteInput): Promise<Debi
       try {
         // Criar financial_commitment do tipo 'expense' para esta despesa
         const commitment = await createCommitment({
-          entityId: entityId,
+          entityId,
           type: 'expense',
           category: 'Serviços Profissionais', // Categoria padrão para despesas de notas de débito
           description: expense.description || `Despesa - Nota de Débito ${debitNote.number}`,
@@ -638,6 +634,10 @@ export async function findMatchingDebitNotes(
 }
 
 export type UpdateDebitNoteInput = {
+  /** Número da nota (editável principalmente em notas avulsas). Deve ser único no workspace. */
+  number?: string | null
+  /** Entidade (cliente) para nota avulsa; opcional. */
+  entityId?: string | null
   description?: string | null
   issuedDate?: string | Date
   dueDate?: string | Date
@@ -748,6 +748,28 @@ export async function updateDebitNote(
   
   if (input.notes !== undefined) {
     updateData.notes = input.notes
+  }
+
+  if (input.entityId !== undefined) {
+    updateData.entity_id = input.entityId || null
+  }
+
+  if (input.number !== undefined && input.number !== null) {
+    const trimmed = String(input.number).trim()
+    if (!trimmed) {
+      throw new Error("O número da nota não pode ficar em branco")
+    }
+    const { data: existing } = await supabase
+      .from("debit_notes")
+      .select("id")
+      .eq("workspace_id", workspace.id)
+      .eq("number", trimmed)
+      .neq("id", debitNoteId)
+      .maybeSingle()
+    if (existing) {
+      throw new Error("Já existe outra nota de débito com este número neste workspace")
+    }
+    updateData.number = trimmed
   }
   
   if (input.issuedDate) {

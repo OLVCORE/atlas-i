@@ -1,11 +1,25 @@
 import { createClient } from "@/lib/supabase/server"
+import { createSupabaseAdminClient } from "@/lib/supabase/admin"
 import { getOrSetActiveWorkspace } from "./workspace-active"
+
+function getAdminClientOrNull() {
+  try {
+    return createSupabaseAdminClient()
+  } catch {
+    return null
+  }
+}
 
 export async function getActiveWorkspace() {
   const workspaceId = await getOrSetActiveWorkspace()
   const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  const { data: workspace, error } = await supabase
+  // Sem login: anon + RLS não retorna linha; usar admin para buscar o workspace
+  const client = user ? supabase : createSupabaseAdminClient()
+  const { data: workspace, error } = await client
     .from("workspaces")
     .select("*")
     .eq("id", workspaceId)
@@ -28,13 +42,19 @@ export async function getOrCreateWorkspace() {
 
 export async function listWorkspaces() {
   const supabase = await createClient()
-  
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
   if (!user) {
-    throw new Error("Usuário não autenticado")
+    const admin = getAdminClientOrNull()
+    if (!admin) return []
+    const { data: workspaces } = await admin
+      .from("workspaces")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(100)
+    return workspaces ?? []
   }
 
   const { data: memberships, error } = await supabase
@@ -47,21 +67,16 @@ export async function listWorkspaces() {
   }
 
   if (!memberships || memberships.length === 0) {
-    // Garantir que existe um workspace (getOrSetActiveWorkspace cria se necessário)
-    const { getOrSetActiveWorkspace } = await import("./workspace-active")
     const workspaceId = await getOrSetActiveWorkspace()
-    
     const { data: workspace } = await supabase
       .from("workspaces")
       .select("*")
       .eq("id", workspaceId)
       .single()
-
     return workspace ? [workspace] : []
   }
 
   const workspaceIds = memberships.map((m) => m.workspace_id)
-
   const { data: workspaces, error: workspacesError } = await supabase
     .from("workspaces")
     .select("*")

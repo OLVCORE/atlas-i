@@ -15,13 +15,23 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { LineItemsEditor, type LineItem } from "@/components/contracts/line-items-editor"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import type { DebitNoteWithItems } from "@/lib/debit-notes"
 import { Eye } from "lucide-react"
+
+type EntityOption = { id: string; legal_name: string }
 
 type DebitNoteEditDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   debitNote: DebitNoteWithItems | null
+  entities: EntityOption[]
   onUpdateAction: (prevState: any, formData: FormData) => Promise<{ ok: boolean; error?: string; message?: string }>
 }
 
@@ -29,6 +39,7 @@ export function DebitNoteEditDialog({
   open,
   onOpenChange,
   debitNote,
+  entities,
   onUpdateAction,
 }: DebitNoteEditDialogProps) {
   const router = useRouter()
@@ -38,9 +49,13 @@ export function DebitNoteEditDialog({
   const [description, setDescription] = useState("")
   const [clientName, setClientName] = useState("")
   const [notes, setNotes] = useState("")
+  const [number, setNumber] = useState("")
+  const [entityId, setEntityId] = useState("")
   const [issuedDate, setIssuedDate] = useState("")
   const [dueDate, setDueDate] = useState("")
   const [loadingItems, setLoadingItems] = useState(false)
+
+  const isAvulsa = debitNote ? !debitNote.contract_id : false
 
   // Separar expenses e discounts dos items da nota
   const loadLineItems = useCallback(async () => {
@@ -69,6 +84,8 @@ export function DebitNoteEditDialog({
       setDescription(debitNote.description || "")
       setClientName(debitNote.client_name || "")
       setNotes(debitNote.notes || "")
+      setNumber(debitNote.number || "")
+      setEntityId((debitNote as any).entity_id || "")
       setIssuedDate(debitNote.issued_date)
       setDueDate(debitNote.due_date)
     } catch (error) {
@@ -117,6 +134,9 @@ export function DebitNoteEditDialog({
     
     const formData = new FormData(e.currentTarget)
     formData.append("id", debitNote.id)
+    if (isAvulsa) {
+      formData.set("entity_id", entityId || "")
+    }
     
     // Adicionar expenses e discounts ao FormData
     expenses.forEach((item, index) => {
@@ -152,12 +172,15 @@ export function DebitNoteEditDialog({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="number">Número</Label>
+              <Label htmlFor="number">Número {isAvulsa && "(editável em nota avulsa)"}</Label>
               <Input
                 id="number"
-                value={debitNote.number}
-                disabled
-                className="bg-muted"
+                name="number"
+                value={number}
+                onChange={(e) => setNumber(e.target.value)}
+                disabled={!isAvulsa}
+                placeholder="Ex: ND-2026-001"
+                className={!isAvulsa ? "bg-muted" : ""}
               />
             </div>
 
@@ -182,6 +205,28 @@ export function DebitNoteEditDialog({
                 placeholder="Ex: Kelludy Festas e Eventos"
               />
             </div>
+
+            {isAvulsa && (
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="entity_id">Entidade (cliente)</Label>
+                <Select value={entityId || "__none__"} onValueChange={(v) => setEntityId(v === "__none__" ? "" : v)}>
+                  <SelectTrigger id="entity_id">
+                    <SelectValue placeholder="Selecione a entidade (opcional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Nenhuma</SelectItem>
+                    {entities.map((ent) => (
+                      <SelectItem key={ent.id} value={ent.id}>
+                        {ent.legal_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Atribua uma entidade cadastrada quando não houver contrato vinculado.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">

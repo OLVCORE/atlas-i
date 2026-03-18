@@ -27,11 +27,14 @@ import { Maximize2, Minimize2 } from "lucide-react"
 import type { Contract } from "@/lib/contracts"
 import type { ContractSchedule } from "@/lib/schedules"
 
+type EntityOption = { id: string; legal_name: string }
+
 type GenerateDebitNoteDialogProps = {
   contracts: Contract[]
+  entities: EntityOption[]
 }
 
-export function GenerateDebitNoteDialog({ contracts }: GenerateDebitNoteDialogProps) {
+export function GenerateDebitNoteDialog({ contracts, entities }: GenerateDebitNoteDialogProps) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [selectedContractId, setSelectedContractId] = useState("")
@@ -40,12 +43,16 @@ export function GenerateDebitNoteDialog({ contracts }: GenerateDebitNoteDialogPr
   const [description, setDescription] = useState("")
   const [clientName, setClientName] = useState("")
   const [notes, setNotes] = useState("")
+  const [entityIdAvulsa, setEntityIdAvulsa] = useState("")
   const [expenses, setExpenses] = useState<LineItem[]>([])
   const [discounts, setDiscounts] = useState<LineItem[]>([])
+  const [dueDateAvulsa, setDueDateAvulsa] = useState("") // Data de vencimento para nota avulsa
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingSchedules, setIsLoadingSchedules] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
+
+  const isAvulsa = !selectedContractId || selectedContractId === "__avulsa__"
 
   // Buscar schedules quando contrato for selecionado
   useEffect(() => {
@@ -86,14 +93,13 @@ export function GenerateDebitNoteDialog({ contracts }: GenerateDebitNoteDialogPr
     setSelectedScheduleIds(newSet)
   }
 
-  const schedulesAmount = schedules
-    .filter((s) => selectedScheduleIds.has(s.id))
-    .reduce((sum, s) => sum + Number(s.amount), 0)
-  
+  const schedulesAmount = isAvulsa
+    ? 0
+    : schedules
+        .filter((s) => selectedScheduleIds.has(s.id))
+        .reduce((sum, s) => sum + Number(s.amount), 0)
   const expensesAmount = expenses.reduce((sum, e) => sum + Math.abs(e.amount || 0), 0)
-  // Descontos: sempre usar valor absoluto (positivo) e subtrair
   const discountsAmount = discounts.reduce((sum, d) => sum + Math.abs(d.amount || 0), 0)
-  
   const totalAmount = schedulesAmount + expensesAmount - discountsAmount
 
   const formatCurrency = (value: number) => {
@@ -108,14 +114,24 @@ export function GenerateDebitNoteDialog({ contracts }: GenerateDebitNoteDialogPr
   }
 
   const handleSubmit = async () => {
-    if (!selectedContractId) {
-      setError("Selecione um contrato")
-      return
-    }
-
-    if (selectedScheduleIds.size === 0) {
-      setError("Selecione pelo menos um schedule")
-      return
+    if (isAvulsa) {
+      if (!dueDateAvulsa.trim()) {
+        setError("Informe a data de vencimento da nota avulsa")
+        return
+      }
+      if (totalAmount <= 0) {
+        setError("Nota avulsa: inclua pelo menos uma despesa; o total (despesas - descontos) deve ser maior que zero")
+        return
+      }
+    } else {
+      if (!selectedContractId) {
+        setError("Selecione um contrato")
+        return
+      }
+      if (selectedScheduleIds.size === 0) {
+        setError("Selecione pelo menos um schedule")
+        return
+      }
     }
 
     setIsLoading(true)
@@ -128,9 +144,13 @@ export function GenerateDebitNoteDialog({ contracts }: GenerateDebitNoteDialogPr
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          contractId: selectedContractId,
-          scheduleIds: Array.from(selectedScheduleIds),
+          contractId: isAvulsa ? null : selectedContractId,
+          scheduleIds: isAvulsa ? [] : Array.from(selectedScheduleIds),
+          dueDate: isAvulsa ? dueDateAvulsa : undefined,
+          entityId: isAvulsa && entityIdAvulsa ? entityIdAvulsa : null,
           description: description || null,
+          clientName: clientName || null,
+          notes: notes || null,
           expenses: expenses.map(e => ({ description: e.description || null, amount: e.amount })),
           discounts: discounts.map(d => ({ description: d.description || null, amount: d.amount })),
         }),
@@ -149,6 +169,8 @@ export function GenerateDebitNoteDialog({ contracts }: GenerateDebitNoteDialogPr
       setSelectedContractId("")
       setSchedules([])
       setSelectedScheduleIds(new Set())
+      setDueDateAvulsa("")
+      setEntityIdAvulsa("")
       setDescription("")
       setClientName("")
       setNotes("")
@@ -177,7 +199,9 @@ export function GenerateDebitNoteDialog({ contracts }: GenerateDebitNoteDialogPr
             <div className="flex-1">
               <AlertDialogTitle>Gerar Nota de Débito</AlertDialogTitle>
               <AlertDialogDescription>
-                Selecione um contrato e os schedules para incluir na nota de débito
+                {isAvulsa
+                  ? "Nota avulsa (sem contrato): preencha despesas, descontos e data de vencimento."
+                  : "Selecione um contrato e os schedules para incluir na nota de débito."}
               </AlertDialogDescription>
             </div>
             <Button
@@ -195,14 +219,15 @@ export function GenerateDebitNoteDialog({ contracts }: GenerateDebitNoteDialogPr
 
         <div className={`${isFullscreen ? "flex-1 flex flex-col overflow-hidden" : "space-y-4"}`}>
           <div className={`${isFullscreen ? "flex-shrink-0 space-y-4" : "space-y-4"}`}>
-            {/* Seleção de Contrato */}
+            {/* Seleção: Nota avulsa ou Contrato */}
             <div className="space-y-2">
-              <Label htmlFor="contract">Contrato *</Label>
-              <Select value={selectedContractId} onValueChange={setSelectedContractId}>
+              <Label htmlFor="contract">{isAvulsa ? "Tipo" : "Contrato *"}</Label>
+              <Select value={selectedContractId || "__avulsa__"} onValueChange={(v) => setSelectedContractId(v === "__avulsa__" ? "" : v)}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecione um contrato" />
+                  <SelectValue placeholder="Selecione um contrato ou nota avulsa" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="__avulsa__">Nota avulsa (sem contrato)</SelectItem>
                   {contracts.map((contract) => (
                     <SelectItem key={contract.id} value={contract.id}>
                       {contract.title}
@@ -212,8 +237,44 @@ export function GenerateDebitNoteDialog({ contracts }: GenerateDebitNoteDialogPr
               </Select>
             </div>
 
-            {/* Lista de Schedules */}
-            {selectedContractId && (
+            {/* Data de vencimento para nota avulsa */}
+            {isAvulsa && (
+              <div className="space-y-2">
+                <Label htmlFor="dueDateAvulsa">Data de vencimento *</Label>
+                <Input
+                  id="dueDateAvulsa"
+                  type="date"
+                  value={dueDateAvulsa}
+                  onChange={(e) => setDueDateAvulsa(e.target.value)}
+                />
+              </div>
+            )}
+
+            {/* Entidade (cliente) para nota avulsa */}
+            {isAvulsa && (
+              <div className="space-y-2">
+                <Label htmlFor="entity_avulsa">Entidade (cliente)</Label>
+                <Select value={entityIdAvulsa || "__none__"} onValueChange={(v) => setEntityIdAvulsa(v === "__none__" ? "" : v)}>
+                  <SelectTrigger id="entity_avulsa">
+                    <SelectValue placeholder="Selecione a entidade (opcional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Nenhuma</SelectItem>
+                    {entities.map((ent) => (
+                      <SelectItem key={ent.id} value={ent.id}>
+                        {ent.legal_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Atribua uma entidade cadastrada quando não houver contrato vinculado.
+                </p>
+              </div>
+            )}
+
+            {/* Lista de Schedules (apenas quando tem contrato) */}
+            {!isAvulsa && selectedContractId && (
               <div className="space-y-2">
                 <Label>Schedules Disponíveis *</Label>
                 {isLoadingSchedules ? (
@@ -274,7 +335,7 @@ export function GenerateDebitNoteDialog({ contracts }: GenerateDebitNoteDialogPr
             )}
 
             {/* Total */}
-            {selectedScheduleIds.size > 0 && (
+            {((!isAvulsa && selectedScheduleIds.size > 0) || (isAvulsa && totalAmount > 0)) && (
               <div className="bg-muted p-3 rounded-md">
                 <div className="flex justify-between items-center">
                   <span className="font-medium">Total:</span>
@@ -339,7 +400,13 @@ export function GenerateDebitNoteDialog({ contracts }: GenerateDebitNoteDialogPr
           <Button variant="outline" onClick={() => setOpen(false)} disabled={isLoading}>
             Cancelar
           </Button>
-          <Button onClick={handleSubmit} disabled={isLoading || selectedScheduleIds.size === 0}>
+          <Button
+            onClick={handleSubmit}
+            disabled={
+              isLoading ||
+              (isAvulsa ? totalAmount <= 0 || !dueDateAvulsa.trim() : selectedScheduleIds.size === 0)
+            }
+          >
             {isLoading ? "Gerando..." : "Gerar Nota"}
           </Button>
         </AlertDialogFooter>

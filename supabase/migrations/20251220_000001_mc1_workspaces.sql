@@ -29,12 +29,14 @@ ALTER TABLE public.workspaces ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.workspace_members ENABLE ROW LEVEL SECURITY;
 
 -- Policies para workspaces
--- SELECT: permitido se o usuário for membro do workspace
+-- SELECT: criador vê o próprio workspace OU usuário é membro (evita recursão com workspace_members)
 DROP POLICY IF EXISTS "workspaces_select_for_members" ON public.workspaces;
 CREATE POLICY "workspaces_select_for_members"
     ON public.workspaces
     FOR SELECT
     USING (
+        created_by = auth.uid()
+        OR
         EXISTS (
             SELECT 1 FROM public.workspace_members
             WHERE workspace_members.workspace_id = workspaces.id
@@ -78,24 +80,12 @@ CREATE POLICY "workspaces_delete_for_owner"
     );
 
 -- Policies para workspace_members
--- SELECT: permitido se user_id = auth.uid() OU se o workspace foi criado por auth.uid()
--- Isso evita recursão infinita (não consulta workspace_members dentro da policy)
--- Para MC1, isso é suficiente pois cada usuário geralmente gerencia apenas seu próprio workspace
+-- SELECT: apenas user_id = auth.uid() para evitar recursão (não consultar workspaces aqui)
 DROP POLICY IF EXISTS "workspace_members_select_for_members" ON public.workspace_members;
 CREATE POLICY "workspace_members_select_for_members"
     ON public.workspace_members
     FOR SELECT
-    USING (
-        -- Permite ver se é o próprio usuário na linha
-        user_id = auth.uid()
-        OR
-        -- Permite ver todos os membros de workspaces que o usuário criou
-        EXISTS (
-            SELECT 1 FROM public.workspaces w
-            WHERE w.id = workspace_members.workspace_id
-            AND w.created_by = auth.uid()
-        )
-    );
+    USING (user_id = auth.uid());
 
 -- INSERT: owner/admin OU criador do workspace se adicionando como owner (primeira vez)
 DROP POLICY IF EXISTS "workspace_members_insert_for_owner_admin" ON public.workspace_members;

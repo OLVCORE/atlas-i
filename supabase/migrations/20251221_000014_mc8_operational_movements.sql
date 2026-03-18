@@ -12,12 +12,11 @@ BEGIN
     AND column_name = 'source_type'
   ) THEN
     -- Criar tipo ENUM se não existir
-    DO $$
     BEGIN
       CREATE TYPE transaction_source_type AS ENUM ('manual', 'commitment', 'installment', 'transfer', 'adjustment');
     EXCEPTION
       WHEN duplicate_object THEN NULL;
-    END $$;
+    END;
     
     ALTER TABLE public.transactions
     ADD COLUMN source_type transaction_source_type NOT NULL DEFAULT 'manual';
@@ -41,12 +40,11 @@ BEGIN
     AND table_name = 'transactions'
     AND column_name = 'direction'
   ) THEN
-    DO $$
     BEGIN
       CREATE TYPE transaction_direction AS ENUM ('in', 'out');
     EXCEPTION
       WHEN duplicate_object THEN NULL;
-    END $$;
+    END;
     
     -- Preencher direction baseado em type existente
     ALTER TABLE public.transactions

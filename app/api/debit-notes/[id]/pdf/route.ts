@@ -76,24 +76,25 @@ export async function GET(
     const debitNoteId = params.id
 
     console.log("[PDF] Buscando nota de débito:", debitNoteId)
-    // Buscar nota de débito
     const debitNote = await getDebitNoteById(debitNoteId)
-
-    // Buscar contrato
-    const contracts = await listContracts()
-    const contract = contracts.find((c) => c.id === debitNote.contract_id)
-    if (!contract) {
-      throw new Error("Contrato não encontrado")
+    if (!debitNote) {
+      return NextResponse.json({ error: "Nota de débito não encontrada" }, { status: 404 })
     }
 
-    // Buscar entidade (cliente)
+    let contract: Awaited<ReturnType<typeof listContracts>>[number] | null = null
+    let entity: Awaited<ReturnType<typeof listEntities>>[number] | null = null
     const entities = await listEntities()
-    const entity = entities.find((e) => e.id === contract.counterparty_entity_id)
-    if (!entity) {
-      throw new Error("Entidade não encontrada")
+    if (debitNote.contract_id) {
+      const contracts = await listContracts()
+      contract = contracts.find((c) => c.id === debitNote.contract_id) ?? null
+      if (contract) {
+        entity = entities.find((e) => e.id === contract!.counterparty_entity_id) ?? null
+      }
+    }
+    if (!entity && debitNote.entity_id) {
+      entity = entities.find((e) => e.id === debitNote.entity_id) ?? null
     }
 
-    // Gerar HTML da nota
     const html = generateDebitNoteHTML(debitNote, contract, entity)
 
     // Carregar puppeteer
@@ -236,8 +237,8 @@ export async function GET(
 
 function generateDebitNoteHTML(
   debitNote: any,
-  contract: any,
-  entity: any
+  contract: any | null,
+  entity: any | null
 ): string {
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("pt-BR", {
@@ -423,22 +424,26 @@ function generateDebitNoteHTML(
     </div>
 
     <div class="info-section">
+      ${entity ? `
       <div class="info-row">
         <div class="info-label">Entidade:</div>
         <div class="info-value">${entity.legal_name}</div>
       </div>
       <div class="info-row">
-        <div class="info-label">Cliente:</div>
-        <div class="info-value">${debitNote.client_name || entity.legal_name}</div>
-      </div>
-      <div class="info-row">
         <div class="info-label">Documento:</div>
         <div class="info-value">${entity.document}</div>
       </div>
+      ` : ""}
+      <div class="info-row">
+        <div class="info-label">Cliente:</div>
+        <div class="info-value">${debitNote.client_name || (entity?.legal_name ?? "—")}</div>
+      </div>
+      ${contract ? `
       <div class="info-row">
         <div class="info-label">Contrato:</div>
         <div class="info-value">${contract.title}</div>
       </div>
+      ` : "<div class=\"info-row\"><div class=\"info-value\" style=\"color:#666;\">Nota avulsa (sem vínculo a contrato)</div></div>"}
       <div class="info-row">
         <div class="info-label">Data de Emissão:</div>
         <div class="info-value">${formatDate(debitNote.issued_date)}</div>
@@ -472,6 +477,13 @@ function generateDebitNoteHTML(
       </tbody>
     </table>
 
+    ${debitNote.notes ? `
+    <div class="notes-section" style="margin-top: 20px; padding-top: 12px; border-top: 1px solid #ddd;">
+      <div style="font-weight: 600; margin-bottom: 6px; font-size: 12px;">Observações:</div>
+      <div style="font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;">${escapeHtml(debitNote.notes)}</div>
+    </div>
+    ` : ""}
+
     <div class="footer">
       <p>Esta nota de débito foi gerada automaticamente pelo sistema ATLAS-i</p>
       <p>Data de geração: ${new Date().toLocaleString("pt-BR")}</p>
@@ -480,4 +492,15 @@ function generateDebitNoteHTML(
 </body>
 </html>
   `
+}
+
+function escapeHtml(text: string): string {
+  const map: Record<string, string> = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;",
+  }
+  return text.replace(/[&<>"']/g, (c) => map[c] ?? c)
 }

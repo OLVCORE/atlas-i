@@ -232,19 +232,19 @@ export default function LoginPage() {
 
         <div className="space-y-4">
           <div className="flex items-center gap-2 border-b pb-4">
-            <Button
-              type="button"
-              variant={useMagicLink ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setUseMagicLink(true)}
-              className="flex-1"
-            >
-              <Mail className="h-4 w-4 mr-2" />
-              Magic Link
-              <span className="ml-2">
-                <HelpTooltip contentKey="login.magic_link" />
-              </span>
-            </Button>
+            <div className="flex items-center gap-1 flex-1">
+              <Button
+                type="button"
+                variant={useMagicLink ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setUseMagicLink(true)}
+                className="flex-1"
+              >
+                <Mail className="h-4 w-4 mr-2" />
+                Magic Link
+              </Button>
+              <HelpTooltip contentKey="login.magic_link" />
+            </div>
             <Button
               type="button"
               variant={!useMagicLink ? "default" : "ghost"}
