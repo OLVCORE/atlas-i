@@ -46,7 +46,8 @@ export function DebitNotesTableClient({
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [selectedDebitNote, setSelectedDebitNote] = useState<DebitNoteWithItems | null>(null)
 
-  const getContractName = (contractId: string) => {
+  const getContractName = (contractId: string | null) => {
+    if (!contractId) return "—"
     const contract = contracts.find((c) => c.id === contractId)
     return contract?.title || "Desconhecido"
   }
