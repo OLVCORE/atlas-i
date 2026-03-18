@@ -46,6 +46,11 @@ export function LineItemsEditor({
     const items: LineItem[] = []
     
     for (const line of lines) {
+      // Se a linha vier como "SUSPENSO ..." (normalmente vem na descrição), ignora.
+      if (/suspens(o|a)/i.test(line)) {
+        continue
+      }
+
       // Separar por tab ou espaços múltiplos
       const parts = line.split(/\t+| {2,}/).map(p => p.trim()).filter(p => p)
       
@@ -63,23 +68,56 @@ export function LineItemsEditor({
         amountStr = parts[parts.length - 1]
       }
       
-      // Parse do valor
-      let amount = 0
-      if (amountStr === "SUSPENSO" || amountStr === "SUSPENSA") {
-        continue // Ignora itens suspensos
+      const parseAmount = (raw: string): number | null => {
+        const t = raw.trim()
+        if (!t) return null
+        if (/suspens(o|a)/i.test(t)) return null
+
+        // Detecta negativo por parênteses (ex: (R$ 1.234,56))
+        let negative = false
+        let normalized = t
+        if (normalized.includes("(") && normalized.includes(")")) {
+          negative = true
+          normalized = normalized.replace(/[()]/g, "")
+        }
+
+        // Detecta negativo por "-"
+        if (normalized.includes("-")) {
+          negative = true
+        }
+
+        // Mantém apenas dígitos e separadores numéricos
+        // Ex: "R$ 1.876,68" -> "1.876,68"
+        normalized = normalized.replace(/[^0-9,.\-]/g, "")
+
+        // Remove todos os "-" para não quebrar o parseFloat (o sinal fica na variável negative)
+        normalized = normalized.replace(/-/g, "")
+
+        if (!normalized) return null
+
+        // Monta número float respeitando pt-BR:
+        // - "18.265,74" => milhares '.' + decimal ','
+        // - "1876,68" => decimal ','
+        // - "1876.68" => decimal '.'
+        let numStr = normalized
+        if (numStr.includes(",") && numStr.includes(".")) {
+          numStr = numStr.replace(/\./g, "").replace(",", ".")
+        } else if (numStr.includes(",")) {
+          numStr = numStr.replace(",", ".")
+        }
+
+        const parsed = parseFloat(numStr)
+        if (isNaN(parsed)) return null
+        return negative ? -parsed : parsed
       }
-      
-      // Remover formatação (pontos de milhar, vírgula decimal)
-      const cleanAmount = amountStr.replace(/\./g, "").replace(",", ".")
-      const parsed = parseFloat(cleanAmount)
-      
-      if (!isNaN(parsed)) {
-        amount = parsed
-        items.push({
-          description: description || "",
-          amount,
-        })
-      }
+
+      const amount = parseAmount(amountStr)
+      if (amount === null) continue
+
+      items.push({
+        description: description || "",
+        amount,
+      })
     }
     
     return items
