@@ -3844,10 +3844,13 @@ CREATE POLICY debit_notes_insert_for_members
             FROM public.workspace_members
             WHERE user_id = auth.uid()
         )
-        AND contract_id IN (
-            SELECT id
-            FROM public.contracts
-            WHERE workspace_id = debit_notes.workspace_id
+        AND (
+          contract_id IS NULL
+          OR contract_id IN (
+              SELECT id
+              FROM public.contracts
+              WHERE workspace_id = debit_notes.workspace_id
+          )
         )
     );
 
