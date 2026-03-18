@@ -45,6 +45,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Rate limiting
+    if (!user) {
+      return NextResponse.json({ error: "Usuário não autenticado" }, { status: 401 })
+    }
+
     if (!checkRateLimit(user.id)) {
       return NextResponse.json(
         { error: "Limite de uso atingido. Tente novamente mais tarde." },
