@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache"
 import { getActiveWorkspace } from "@/lib/workspace"
+import { createClient } from "@/lib/supabase/server"
 import { listSchedulesByCommitment, listSchedulesByPeriod, listSchedulesByContract } from "@/lib/schedules"
 import { listCommitments } from "@/lib/commitments"
 import { listContracts } from "@/lib/contracts"
@@ -250,6 +251,7 @@ export default async function SchedulesPage({
         let contractSchedules: any[] = []
         try {
           const workspace = await getActiveWorkspace()
+          const supabase = await createClient()
           const { data: contractSchedulesData, error: contractError } = await supabase
             .from("contract_schedules")
             .select("*")
