@@ -46,11 +46,6 @@ export function LineItemsEditor({
     const items: LineItem[] = []
     
     for (const line of lines) {
-      // Se a linha vier como "SUSPENSO ..." (normalmente vem na descrição), ignora.
-      if (/suspens(o|a)/i.test(line)) {
-        continue
-      }
-
       // Separar por tab ou espaços múltiplos
       const parts = line.split(/\t+| {2,}/).map(p => p.trim()).filter(p => p)
       
