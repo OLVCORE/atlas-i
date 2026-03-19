@@ -72,12 +72,9 @@ export type CreateDebitNoteInput = {
  * Formato: ND-YYYY-NNN (ex: ND-2026-001)
  */
 export async function generateNextDebitNoteNumber(): Promise<{ number: string; sequenceNumber: number }> {
-  const rlsClient = await createClient()
-  const {
-    data: { user },
-  } = await rlsClient.auth.getUser()
-
-  const supabase = user ? rlsClient : createSupabaseAdminClient()
+  // Para evitar colisões por limitação/visibilidade via RLS (SELECT pode não retornar o último),
+  // usamos service_role apenas para geração de número.
+  const supabase = createSupabaseAdminClient()
   const workspace = await getActiveWorkspace()
   
   // Obter ano atual
