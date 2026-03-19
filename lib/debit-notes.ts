@@ -409,7 +409,11 @@ export async function listDebitNotes(filters?: {
   status?: 'draft' | 'sent' | 'paid' | 'cancelled'
   year?: number
 }): Promise<DebitNoteWithItems[]> {
-  const supabase = await createClient()
+  const rlsClient = await createClient()
+  const {
+    data: { user },
+  } = await rlsClient.auth.getUser()
+  const supabase = user ? rlsClient : createSupabaseAdminClient()
   const workspace = await getActiveWorkspace()
   
   let query = supabase
@@ -471,7 +475,11 @@ export async function listDebitNotes(filters?: {
  * Busca uma nota de débito por ID
  */
 export async function getDebitNoteById(debitNoteId: string): Promise<DebitNoteWithItems> {
-  const supabase = await createClient()
+  const rlsClient = await createClient()
+  const {
+    data: { user },
+  } = await rlsClient.auth.getUser()
+  const supabase = user ? rlsClient : createSupabaseAdminClient()
   const workspace = await getActiveWorkspace()
   
   const { data: note, error } = await supabase
