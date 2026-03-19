@@ -214,28 +214,48 @@ export async function createDebitNote(input: CreateDebitNoteInput): Promise<Debi
 
   const { number, sequenceNumber } = await generateNextDebitNoteNumber()
 
-  const { data: debitNote, error: noteError } = await supabase
-    .from("debit_notes")
-    .insert({
-      workspace_id: workspace.id,
-      contract_id: avulsa ? null : input.contractId!,
-      entity_id: input.entityId || null,
-      number,
-      sequence_number: sequenceNumber,
-      issued_date: formatDateISO(issuedDate),
-      due_date: formatDateISO(dueDate),
-      total_amount: totalAmount,
-      currency: "BRL",
-      status: "draft",
-      description: input.description || null,
-      client_name: input.clientName || null,
-      notes: input.notes || null,
-    })
-    .select()
-    .single()
+  // Retry em caso de colisão de numeração (unique constraint workspace_id + number)
+  // Isso pode ocorrer quando o usuário clica repetidamente após falhas/parcialmente concluídas.
+  let debitNote: any = null
+  let lastNoteError: any = null
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const next = attempt === 0 ? { number, sequenceNumber } : await generateNextDebitNoteNumber()
+    const { data, error } = await supabase
+      .from("debit_notes")
+      .insert({
+        workspace_id: workspace.id,
+        contract_id: avulsa ? null : input.contractId!,
+        entity_id: input.entityId || null,
+        number: next.number,
+        sequence_number: next.sequenceNumber,
+        issued_date: formatDateISO(issuedDate),
+        due_date: formatDateISO(dueDate),
+        total_amount: totalAmount,
+        currency: "BRL",
+        status: "draft",
+        description: input.description || null,
+        client_name: input.clientName || null,
+        notes: input.notes || null,
+      })
+      .select()
+      .single()
 
-  if (noteError) {
-    throw new Error(`Erro ao criar nota de débito: ${noteError.message}`)
+    if (!error) {
+      debitNote = data
+      lastNoteError = null
+      break
+    }
+
+    lastNoteError = error
+    // PostgreSQL unique violation
+    if (error.code === "23505" || String(error.message || "").includes("duplicate key")) {
+      continue
+    }
+    break
+  }
+
+  if (lastNoteError || !debitNote) {
+    throw new Error(`Erro ao criar nota de débito: ${lastNoteError?.message || "unknown error"}`)
   }
 
   const scheduleItems = schedules.map((schedule, index) => ({
