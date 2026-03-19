@@ -3839,10 +3839,19 @@ CREATE POLICY debit_notes_insert_for_members
     ON public.debit_notes
     FOR INSERT
     WITH CHECK (
-        workspace_id IN (
+        (
+          -- Preferimos checar membership (workspace_members), mas também aceitamos o criador do workspace
+          workspace_id IN (
             SELECT workspace_id
             FROM public.workspace_members
             WHERE user_id = auth.uid()
+          )
+          OR
+          workspace_id IN (
+            SELECT id
+            FROM public.workspaces
+            WHERE created_by = auth.uid()
+          )
         )
         AND (
           contract_id IS NULL

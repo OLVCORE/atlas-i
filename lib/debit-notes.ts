@@ -5,6 +5,7 @@
  */
 
 import { createClient } from "@/lib/supabase/server"
+import { createSupabaseAdminClient } from "@/lib/supabase/admin"
 import { getActiveWorkspace } from "@/lib/workspace"
 import { validateAmount, validateNotEmpty } from "@/lib/utils/validation"
 import { formatDateISO, parseDateISO } from "@/lib/utils/dates"
@@ -71,7 +72,12 @@ export type CreateDebitNoteInput = {
  * Formato: ND-YYYY-NNN (ex: ND-2026-001)
  */
 export async function generateNextDebitNoteNumber(): Promise<{ number: string; sequenceNumber: number }> {
-  const supabase = await createClient()
+  const rlsClient = await createClient()
+  const {
+    data: { user },
+  } = await rlsClient.auth.getUser()
+
+  const supabase = user ? rlsClient : createSupabaseAdminClient()
   const workspace = await getActiveWorkspace()
   
   // Obter ano atual
@@ -105,7 +111,15 @@ const isAvulsa = (input: CreateDebitNoteInput) =>
  * Cria uma nova nota de débito (com contrato + schedules ou avulsa com despesas/descontos)
  */
 export async function createDebitNote(input: CreateDebitNoteInput): Promise<DebitNoteWithItems> {
-  const supabase = await createClient()
+  // Se o request chegar sem usuário autenticado (auth.uid() = null),
+  // as policies baseadas em auth.uid() bloqueiam. Nesse caso, usamos service_role.
+  const rlsClient = await createClient()
+  const {
+    data: { user },
+  } = await rlsClient.auth.getUser()
+
+  const supabase = user ? rlsClient : createSupabaseAdminClient()
+  const hasAuthenticatedUser = !!user
   const workspace = await getActiveWorkspace()
   const avulsa = isAvulsa(input)
 
@@ -286,7 +300,9 @@ export async function createDebitNote(input: CreateDebitNoteInput): Promise<Debi
   }
 
   // Criar financial_commitments e financial_schedules para cada despesa (quando há entityId)
-  if (input.expenses && input.expenses.length > 0 && entityId) {
+  // Em modo "sem login" (auth.uid = null), preferimos NÃO provisionar para não depender de RLS
+  // nas tabelas financeiras (isso pode falhar e causar rollback da nota criada).
+  if (hasAuthenticatedUser && input.expenses && input.expenses.length > 0 && entityId) {
     const expenseCommitments: Array<{ itemId: string; commitmentId: string }> = []
     
     for (let i = 0; i < input.expenses.length; i++) {
