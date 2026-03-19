@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { DebitNotesTableClient } from "@/components/debit-notes/debit-notes-table-client"
 import { GenerateDebitNoteDialog } from "@/components/debit-notes/generate-debit-note-dialog"
 
+export const dynamic = "force-dynamic"
+
 async function updateDebitNoteAction(prevState: any, formData: FormData) {
   "use server"
   

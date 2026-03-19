@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { getActiveWorkspace } from "@/lib/workspace"
 import { createDebitNote } from "@/lib/debit-notes"
+import { revalidatePath } from "next/cache"
 
 export async function POST(request: NextRequest) {
   try {
@@ -40,6 +41,9 @@ export async function POST(request: NextRequest) {
       expenses: expenses || [],
       discounts: discounts || [],
     })
+
+    // Evitar cache e garantir que a lista do frontend atualize
+    revalidatePath("/app/debit-notes")
 
     return NextResponse.json(debitNote, { status: 201 })
   } catch (error: any) {
